@@ -62,7 +62,7 @@ class Store {
 new Store().load();
 ```
 
-A member also counts as used when it implements an interface member that is used, when it's named in `Pick<Class, "name">`, or when an instance is passed to a JSX prop whose type requires it. Options: `includePrivate` and `includeProtected` (both `false` by default).
+A member also counts as used when it implements an interface member that is used or that is declared outside the analyzed code (a library calls it), when it's named in `Pick<Class, "name">`, or when an instance is passed to a JSX prop whose type requires it. Options: `includePrivate` and `includeProtected` (both `false` by default).
 
 ### unused-object-keys
 
@@ -174,7 +174,7 @@ const enabled = await fetchFlag().catch((error) => { // Promise rejection is log
 
 ### no-stringified-unknown-error
 
-`error instanceof Error ? error.message : String(error)` (in either order), which flattens a caught value into a string and drops its type, stack and cause. A plain `instanceof Error` check counts when the variable is named `error`, `err`, `e` or `cause`; an `||` of `instanceof` checks counts for any name.
+`error instanceof Error ? error.message : String(error)` (in either order), which flattens a caught value into a string and drops its type, stack and cause. A plain `instanceof Error` check counts when the variable is named `error`, `err`, `e` or `cause`; an `||` of `instanceof` checks counts for any name. A function that does nothing but this conversion, like `getErrorMessage(error)`, is where it belongs and isn't reported; use it instead of repeating the expression.
 
 ```ts
 try {

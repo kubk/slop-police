@@ -33,6 +33,29 @@ new Store().used();
 			want: []string{"Method Store.unused is never used", "Getter Store.total is never used"},
 		},
 		{
+			name: "members implementing a library interface",
+			files: map[string]string{
+				// .d.ts files aren't analyzed, like a package in node_modules.
+				"library.d.ts": `
+export interface FileSystem {
+  read(path: string): string;
+  stat?(path: string): number;
+}
+export declare function mount(fs: FileSystem): void;
+`,
+				"fs.ts": `
+import { mount, type FileSystem } from "./library";
+class MemoryFileSystem implements FileSystem {
+  read(path: string) { return path; }
+  stat(path: string) { return path.length; }
+  unused() {}
+}
+mount(new MemoryFileSystem());
+`,
+			},
+			want: []string{"Method MemoryFileSystem.unused is never used"},
+		},
+		{
 			name:  "private and protected skipped by default",
 			files: hiddenMembers,
 		},

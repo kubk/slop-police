@@ -28,15 +28,25 @@ export function onFailure(err: unknown, e: unknown, cause: unknown) {
 }
 
 export function describe(failure: unknown) {
+  run();
   return failure instanceof DOMException || failure instanceof TypeError ? failure.message : String(failure);
 }
+
+// A helper that only does the conversion is where it belongs.
+export function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+export const toMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+export const toMessageBlock = (err: unknown) => {
+  return err instanceof Error ? err.message : String(err);
+};
 `}, stringifiedErrorRules)
 	want := []finding{
 		{9, "Caught value error is flattened into a string"},
 		{14, "Caught value err is flattened into a string"},
 		{15, "Caught value e is flattened into a string"},
 		{16, "Caught value cause is flattened into a string"},
-		{20, "Caught value failure is flattened into a string"},
+		{21, "Caught value failure is flattened into a string"},
 	}
 	if got := lineMessages(results); !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)

@@ -18,11 +18,32 @@ func init() {
 			if node.Kind != ast.KindConditionalExpression {
 				return
 			}
+			if isWholeFunctionResult(node) {
+				return
+			}
 			if name := stringifiedErrorName(node.AsConditionalExpression()); name != "" {
 				report(node, "Caught value "+name+" is flattened into a string")
 			}
 		},
 	})
+}
+
+// isWholeFunctionResult reports whether node is all a function does, as in
+// getErrorMessage(error) { return error instanceof Error ? ... }. Such a
+// helper is where the conversion belongs, instead of repeating it inline.
+func isWholeFunctionResult(node *ast.Node) bool {
+	parent := node.Parent
+	for parent.Kind == ast.KindParenthesizedExpression {
+		parent = parent.Parent
+	}
+	if parent.Kind == ast.KindArrowFunction {
+		return true
+	}
+	if parent.Kind != ast.KindReturnStatement || parent.Parent.Kind != ast.KindBlock {
+		return false
+	}
+	block := parent.Parent
+	return len(block.Statements()) == 1 && isFunctionLikeDeclaration(block.Parent)
 }
 
 var errorVariableNames = map[string]bool{"error": true, "err": true, "e": true, "cause": true}

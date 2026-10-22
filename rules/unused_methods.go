@@ -100,10 +100,13 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 		membersByDeclaration[keyOfDeclaration(c.node)] = []memberKey{c.key}
 		names[c.key.name] = true
 	}
-	addImplementedInterfaceMembers(ctx, candidates, membersByDeclaration)
+	external := addImplementedInterfaceMembers(ctx, candidates, membersByDeclaration)
 	phase("candidates and interfaces")
 
 	used := newUsage(candidates)
+	for _, key := range external {
+		used.add(key)
+	}
 	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
 		collectReferencedMembers(ctx, file, ch, names, membersByDeclaration, used)
 	})
@@ -156,7 +159,10 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 
 // addImplementedInterfaceMembers maps members of implemented interfaces
 // (as the class file's checker sees them) to the candidates with their names.
-func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) {
+// It returns the candidates that implement a member declared outside the
+// analyzed files, such as a library's interface: the library calls them, and
+// its code isn't searched for references.
+func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
 	byClass := map[*ast.Node][]*methodCandidate{}
 	var files []*lint.File
 	seen := map[*lint.File]bool{}
@@ -171,6 +177,7 @@ func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandi
 		}
 	}
 	var mu sync.Mutex
+	var external []memberKey
 	ctx.ForEachFile(files, func(file *lint.File, ch *checker.Checker) {
 		for class, classCandidates := range byClass {
 			if classCandidates[0].file != file {
@@ -187,17 +194,20 @@ func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandi
 						continue
 					}
 					for _, declaration := range property.Declarations {
+						mu.Lock()
 						if ctx.IsAnalyzedPath(pathOf(declaration)) {
-							mu.Lock()
 							key := keyOfDeclaration(declaration)
 							membersByDeclaration[key] = append(membersByDeclaration[key], c.key)
-							mu.Unlock()
+						} else {
+							external = append(external, c.key)
 						}
+						mu.Unlock()
 					}
 				}
 			}
 		}
 	})
+	return external
 }
 
 func implementedTypes(class *ast.Node) []*ast.Node {
