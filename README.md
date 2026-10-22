@@ -150,7 +150,7 @@ Bump `version` in `npm/slop-police/package.json`, commit, then push a matching t
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-CI builds the binaries for macOS and Linux (arm64 and x64) and publishes `slop-police` plus one `slop-police-<os>-<cpu>` package per platform, which npm installs as an optional dependency. Publishing needs an `NPM_TOKEN` repository secret.
+CI builds the binaries for macOS and Linux (arm64 and x64) and publishes `slop-police` plus one `slop-police-<os>-<cpu>` package per platform, which npm installs as an optional dependency, then creates a GitHub release with generated notes. Publishing needs an `NPM_TOKEN` repository secret.
 
 ## License
 
