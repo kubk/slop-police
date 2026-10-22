@@ -14,16 +14,12 @@ const main = JSON.parse(
   fs.readFileSync(path.join(root, "npm/slop-police/package.json"), "utf8"),
 );
 
-// Windows packages are named "windows-*" rather than Node's "win32-*": npm's
-// spam detection rejected the "win32-arm64" name.
 const platforms = [
-  { name: "darwin-arm64", os: "darwin", cpu: "arm64", goos: "darwin", goarch: "arm64", label: "macOS ARM64" },
-  { name: "darwin-x64", os: "darwin", cpu: "x64", goos: "darwin", goarch: "amd64", label: "macOS x64" },
-  { name: "linux-arm64", os: "linux", cpu: "arm64", goos: "linux", goarch: "arm64", label: "Linux ARM64" },
-  { name: "linux-x64", os: "linux", cpu: "x64", goos: "linux", goarch: "amd64", label: "Linux x64" },
-  { name: "windows-arm64", os: "win32", cpu: "arm64", goos: "windows", goarch: "arm64", label: "Windows ARM64" },
-  { name: "windows-x64", os: "win32", cpu: "x64", goos: "windows", goarch: "amd64", label: "Windows x64" },
-];
+  { os: "darwin", cpu: "arm64", goarch: "arm64", label: "macOS ARM64" },
+  { os: "darwin", cpu: "x64", goarch: "amd64", label: "macOS x64" },
+  { os: "linux", cpu: "arm64", goarch: "arm64", label: "Linux ARM64" },
+  { os: "linux", cpu: "x64", goarch: "amd64", label: "Linux x64" },
+].map((platform) => ({ ...platform, name: `${platform.os}-${platform.cpu}` }));
 
 const only = process.argv.slice(2);
 for (const name of only) {
@@ -38,11 +34,7 @@ for (const platform of platforms) {
   if (only.length > 0 && !only.includes(platform.name)) continue;
 
   const dir = path.join(dist, `slop-police-${platform.name}`);
-  const binary = path.join(
-    dir,
-    "bin",
-    platform.os === "win32" ? "slop-police.exe" : "slop-police",
-  );
+  const binary = path.join(dir, "bin", "slop-police");
   console.log(`Building ${platform.name}`);
   execFileSync(
     "go",
@@ -53,7 +45,7 @@ for (const platform of platforms) {
       env: {
         ...process.env,
         CGO_ENABLED: "0",
-        GOOS: platform.goos,
+        GOOS: platform.os,
         GOARCH: platform.goarch,
       },
     },

@@ -125,6 +125,10 @@ class Store {
 export const legacyLinks = { a: "/a", b: "/b" };
 ```
 
+## Platforms
+
+Prebuilt binaries cover macOS and Linux on arm64 and x64. On Windows, use WSL.
+
 ## TypeScript version
 
 The binary embeds the TypeScript 7.0.2 compiler (typescript-go), so it doesn't use the `typescript` package from your project. Your tsconfigs need to work with TypeScript 7.
@@ -146,7 +150,7 @@ Bump `version` in `npm/slop-police/package.json`, commit, then push a matching t
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-CI builds the binaries for macOS, Linux and Windows (arm64 and x64) and publishes `slop-police` plus one `slop-police-<os>-<cpu>` package per platform, which npm installs as an optional dependency. Publishing needs an `NPM_TOKEN` repository secret.
+CI builds the binaries for macOS and Linux (arm64 and x64) and publishes `slop-police` plus one `slop-police-<os>-<cpu>` package per platform, which npm installs as an optional dependency. Publishing needs an `NPM_TOKEN` repository secret.
 
 ## License
 

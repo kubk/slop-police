@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -36,9 +35,6 @@ func runReviewFixtures(t *testing.T) {
 	}
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			if runtime.GOOS == "windows" && strings.Contains(dir, "symlink") {
-				t.Skip("git checks symlinks out as plain files on Windows")
-			}
 			t.Parallel()
 			expected, err := os.ReadFile(filepath.Join(dir, "expected.txt"))
 			if err != nil {
