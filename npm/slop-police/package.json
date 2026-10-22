@@ -1,6 +1,6 @@
 {
   "name": "slop-police",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind",
   "keywords": [
     "typescript",
