@@ -80,6 +80,8 @@ type Context struct {
 // collects the analyzed files: TypeScript sources among the projects' root
 // files, each owned by the first project that lists it, minus ignored ones.
 func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
+	// TypeScript works with forward-slash paths, also on Windows.
+	root = tspath.GetNormalizedAbsolutePath(root, "")
 	ctx := &Context{Root: root, Timing: timing, filesByPath: map[tspath.Path]*File{}}
 	fs := bundled.WrapFS(osvfs.FS())
 	session := project.NewSession(&project.SessionInit{
@@ -95,10 +97,7 @@ func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
 	request := &project.APISnapshotRequest{OpenProjects: &collections.Set[string]{}}
 	configPaths := make([]string, len(config.Projects))
 	for i, projectPath := range config.Projects {
-		configPaths[i] = projectPath
-		if !filepath.IsAbs(projectPath) {
-			configPaths[i] = filepath.Join(root, projectPath)
-		}
+		configPaths[i] = tspath.GetNormalizedAbsolutePath(projectPath, root)
 		if _, err := os.Stat(configPaths[i]); err != nil {
 			return nil, configErrorf("TypeScript project not found: %s", projectPath)
 		}
