@@ -2,8 +2,9 @@
 // prebuilt binary, plus the main slop-police package that depends on all of
 // them optionally, so npm installs only the one matching the user's machine.
 //
-//   node scripts/build-npm.mjs                  all platforms
-//   node scripts/build-npm.mjs darwin-arm64     only the listed platforms
+//   node scripts/build-npm.mjs                  everything
+//   node scripts/build-npm.mjs darwin-arm64     only the listed platform packages
+//   node scripts/build-npm.mjs main             only the main package
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,19 +22,19 @@ const platforms = [
   { os: "linux", cpu: "x64", goarch: "amd64", label: "Linux x64" },
 ].map((platform) => ({ ...platform, name: `${platform.os}-${platform.cpu}` }));
 
-const only = process.argv.slice(2);
-for (const name of only) {
-  if (!platforms.some((platform) => platform.name === name)) {
-    throw new Error(`Unknown platform: ${name}`);
+const targets = process.argv.slice(2);
+for (const target of targets) {
+  if (target !== "main" && !platforms.some(({ name }) => name === target)) {
+    throw new Error(`Unknown target: ${target}`);
   }
 }
-
-fs.rmSync(dist, { recursive: true, force: true });
+const wants = (target) => targets.length === 0 || targets.includes(target);
 
 for (const platform of platforms) {
-  if (only.length > 0 && !only.includes(platform.name)) continue;
+  if (!wants(platform.name)) continue;
 
   const dir = path.join(dist, `slop-police-${platform.name}`);
+  fs.rmSync(dir, { recursive: true, force: true });
   const binary = path.join(dir, "bin", "slop-police");
   console.log(`Building ${platform.name}`);
   execFileSync(
@@ -68,17 +69,20 @@ for (const platform of platforms) {
   );
 }
 
-const mainDir = path.join(dist, "slop-police");
-fs.cpSync(path.join(root, "npm/slop-police"), mainDir, { recursive: true });
-writeJson(path.join(mainDir, "package.json"), {
-  ...main,
-  files: [...main.files, "README.md", "LICENSE"],
-  optionalDependencies: Object.fromEntries(
-    platforms.map(({ name }) => [`slop-police-${name}`, main.version]),
-  ),
-});
-fs.copyFileSync(path.join(root, "README.md"), path.join(mainDir, "README.md"));
-fs.copyFileSync(path.join(root, "LICENSE"), path.join(mainDir, "LICENSE"));
+if (wants("main")) {
+  const mainDir = path.join(dist, "slop-police");
+  fs.rmSync(mainDir, { recursive: true, force: true });
+  fs.cpSync(path.join(root, "npm/slop-police"), mainDir, { recursive: true });
+  writeJson(path.join(mainDir, "package.json"), {
+    ...main,
+    files: [...main.files, "README.md", "LICENSE"],
+    optionalDependencies: Object.fromEntries(
+      platforms.map(({ name }) => [`slop-police-${name}`, main.version]),
+    ),
+  });
+  fs.copyFileSync(path.join(root, "README.md"), path.join(mainDir, "README.md"));
+  fs.copyFileSync(path.join(root, "LICENSE"), path.join(mainDir, "LICENSE"));
+}
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });

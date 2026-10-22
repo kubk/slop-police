@@ -5,11 +5,25 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
-  publish:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go test ./...
+
+  build:
+    strategy:
+      matrix:
+        platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64]
     runs-on: ubuntu-latest
 
     steps:
@@ -22,14 +36,40 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+
+      - run: node scripts/build-npm.mjs ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: slop-police-${{ matrix.platform }}
+          path: dist/npm/slop-police-${{ matrix.platform }}
+
+  publish:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Check tag matches package version
         run: test "v$(node -p "require('./npm/slop-police/package.json').version")" = "$GITHUB_REF_NAME"
 
-      - run: go test ./...
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist/npm
 
-      - run: node scripts/build-npm.mjs
+      - name: Restore executable bits dropped by artifacts
+        run: chmod +x dist/npm/slop-police-*/bin/slop-police
+
+      - run: node scripts/build-npm.mjs main
 
       - name: Publish
         run: |
