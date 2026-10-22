@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 const { spawnSync } = require("node:child_process");
 
-const platformPackage = `slop-police-${process.platform}-${process.arch}`;
+const os = process.platform === "win32" ? "windows" : process.platform;
+const platformPackage = `slop-police-${os}-${process.arch}`;
 const binaryName = process.platform === "win32" ? "slop-police.exe" : "slop-police";
 
 let binary;
