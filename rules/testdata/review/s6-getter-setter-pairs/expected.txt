@@ -1,0 +1,5 @@
+exit 0
+a.ts:3:7  warning  no-pass-through-getter  Getter v only returns this.#v
+a.ts:5:7  warning  no-pass-through-getter  Getter w only returns this.#v
+
+2 problems (0 errors, 2 warnings)

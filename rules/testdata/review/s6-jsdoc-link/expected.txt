@@ -1,0 +1,4 @@
+exit 1
+a.ts:1:55  error  unused-methods  Method Store.unused is never used
+
+1 problem (1 error, 0 warnings)

@@ -1,0 +1,10 @@
+exit 1
+a.tsx:2:23  error  unused-methods  Method S1.u1 is never used
+a.tsx:3:23  error  unused-methods  Method S2.u2 is never used
+a.tsx:4:23  error  unused-methods  Method S3.u3 is never used
+a.tsx:5:23  error  unused-methods  Method S4.u4 is never used
+a.tsx:6:23  error  unused-methods  Method S5.u5 is never used
+a.tsx:7:23  error  unused-methods  Method S6.u6 is never used
+a.tsx:8:23  error  unused-methods  Method S7.u7 is never used
+
+7 problems (7 errors, 0 warnings)

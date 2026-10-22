@@ -1,0 +1,1 @@
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error"},"ignore":["i.ts"]}

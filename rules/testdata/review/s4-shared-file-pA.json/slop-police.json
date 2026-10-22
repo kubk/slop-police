@@ -1,0 +1,1 @@
+{"projects":["pA.json","pB.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error"}}

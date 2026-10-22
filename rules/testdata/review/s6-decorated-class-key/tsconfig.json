@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true,"experimentalDecorators":true,"target":"ES2020","module":"ESNext","moduleResolution":"Bundler","noEmit":true},"include":["**/*.ts"]}

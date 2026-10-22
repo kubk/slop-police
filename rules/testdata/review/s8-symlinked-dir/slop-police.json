@@ -1,0 +1,1 @@
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error","no-identity-type-alias":"error","unused-object-keys":"error"}}

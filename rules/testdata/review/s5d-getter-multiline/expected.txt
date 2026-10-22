@@ -1,0 +1,11 @@
+exit 1
+a.ts:5:3   error  no-pass-through-getter  Getter v only returns this["w"]
+a.ts:5:3   error  unused-methods          Getter A.v is never used
+a.ts:6:14  error  no-pass-through-getter  Getter s only returns this.w
+a.ts:6:14  error  unused-methods          Getter A.s is never used
+a.ts:7:7   error  no-pass-through-getter  Getter #p only returns this.w
+a.ts:8:7   error  no-pass-through-getter  Getter q only returns this?.w
+a.ts:8:7   error  unused-methods          Getter A.q is never used
+a.ts:9:7   error  unused-methods          Getter A.r is never used
+
+8 problems (8 errors, 0 warnings)

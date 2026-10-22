@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Check tag matches package version
+        run: test "v$(node -p "require('./npm/slop-police/package.json').version")" = "$GITHUB_REF_NAME"
+
+      - run: go test ./...
+
+      - run: node scripts/build-npm.mjs
+
+      - name: Publish
+        run: |
+          for dir in dist/npm/slop-police-*/; do
+            npm publish "$dir" --provenance --access public
+          done
+          npm publish dist/npm/slop-police --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

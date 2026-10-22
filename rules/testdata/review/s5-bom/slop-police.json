@@ -1,0 +1,1 @@
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"no-identity-type-alias":"error","no-single-string-cn":"warn","no-pass-through-getter":"error"}}

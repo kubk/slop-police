@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true,"jsx":"preserve","module":"ESNext","moduleResolution":"Bundler","allowImportingTsExtensions":true,"noEmit":true,"target":"ES2020"},"include":["src/**/*.ts"]}

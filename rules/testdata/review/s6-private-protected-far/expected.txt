@@ -1,0 +1,5 @@
+exit 1
+a.ts:2:11  error  unused-methods  Method A.p is never used
+a.ts:9:43  error  unused-methods  Method <anonymous>.zz is never used
+
+2 problems (2 errors, 0 warnings)

@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","include":["u.ts","libA/x.ts"],"compilerOptions":{"baseUrl":".","paths":{"@lib/*":["libA/*"]}}}

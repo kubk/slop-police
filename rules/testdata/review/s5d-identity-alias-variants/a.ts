@@ -1,0 +1,10 @@
+type A = (((Y)));
+type B = Y.Z;
+type C<T> = T;
+type D = Y<string>;
+type E = typeof y;
+type F = /*c*/ Y /*d*/;
+export type G = import("./x").Y;
+type H = Y[];
+namespace N { type I = Y; }
+declare global { type J = Y; }

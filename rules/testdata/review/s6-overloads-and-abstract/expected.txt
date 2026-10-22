@@ -1,0 +1,6 @@
+exit 1
+a.ts:4:3    error  unused-methods  Method A.y is never used
+a.ts:5:10   error  unused-methods  Method A.z is never used
+a.ts:12:10  error  unused-methods  Method A.gen is never used
+
+3 problems (3 errors, 0 warnings)

@@ -1,0 +1,14 @@
+declare function cn(...x: any[]): string;
+cn("a");
+cn(("b"));
+cn(`c`);
+cn(`d${1}`);
+cn("a", "b");
+(cn)("x");
+obj.cn("x");
+cn?.("x");
+cn<string>("x");
+cn(/*x*/"y"/*z*/);
+cn`tag`;
+new cn("x");
+const o = { cn }; o.cn("q");

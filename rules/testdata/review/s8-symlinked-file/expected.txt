@@ -1,0 +1,8 @@
+exit 1
+alias.ts:1:28  error  unused-methods          Method S.unused is never used
+alias.ts:2:6   error  no-identity-type-alias  Type alias X only renames Y
+real.ts:1:18   error  unused-methods          Method S.used is never used
+real.ts:1:28   error  unused-methods          Method S.unused is never used
+real.ts:2:6    error  no-identity-type-alias  Type alias X only renames Y
+
+5 problems (5 errors, 0 warnings)

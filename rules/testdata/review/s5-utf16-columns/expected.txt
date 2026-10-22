@@ -1,0 +1,6 @@
+exit 1
+a.ts:1:25  error    no-identity-type-alias  Type alias X only renames Y
+a.ts:1:51  warning  no-single-string-cn     Use the class string directly instead of wrapping it in cn()
+a.ts:2:21  error    no-pass-through-getter  Getter v only returns this.w
+
+3 problems (2 errors, 1 warning)

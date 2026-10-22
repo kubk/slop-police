@@ -1,0 +1,5 @@
+exit 1
+a/store.ts:3:3   error  unused-methods      Method Store.unused is never used
+a/store.ts:6:28  error  unused-object-keys  cfg.y is never read
+
+2 problems (2 errors, 0 warnings)

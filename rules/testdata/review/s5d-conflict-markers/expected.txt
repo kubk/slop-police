@@ -1,0 +1,5 @@
+exit 1
+a.ts:2:6  error  no-identity-type-alias  Type alias X only renames Y
+a.ts:6:6  error  no-identity-type-alias  Type alias W only renames Y
+
+2 problems (2 errors, 0 warnings)

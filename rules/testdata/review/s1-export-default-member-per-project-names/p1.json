@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","include":["a.ts","n.ts","u.ts"]}

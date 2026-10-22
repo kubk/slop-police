@@ -1,0 +1,6 @@
+exit 0
+a.tsx:2:27  warning  no-single-string-cn  Use the class string directly instead of wrapping it in cn()
+a.tsx:2:37  warning  no-single-string-cn  Use the class string directly instead of wrapping it in cn()
+a.tsx:2:50  warning  no-single-string-cn  Use the class string directly instead of wrapping it in cn()
+
+3 problems (0 errors, 3 warnings)

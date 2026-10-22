@@ -1,0 +1,4 @@
+exit 1
+a.tsx:4:22  error  unused-methods  Method K.unused is never used
+
+1 problem (1 error, 0 warnings)

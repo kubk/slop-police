@@ -1,0 +1,5 @@
+exit 1
+a.tsx:4:3  error  unused-methods  Method Store.close is never used
+a.tsx:5:3  error  unused-methods  Method Store.unused is never used
+
+2 problems (2 errors, 0 warnings)

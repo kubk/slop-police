@@ -1,0 +1,9 @@
+exit 1
+a.ts:1:6    error  no-identity-type-alias  Type alias A only renames Y
+a.ts:2:6    error  no-identity-type-alias  Type alias B only renames Y.Z
+a.ts:3:6    error  no-identity-type-alias  Type alias C only renames T
+a.ts:6:6    error  no-identity-type-alias  Type alias F only renames Y
+a.ts:9:20   error  no-identity-type-alias  Type alias I only renames Y
+a.ts:10:23  error  no-identity-type-alias  Type alias J only renames Y
+
+6 problems (6 errors, 0 warnings)
