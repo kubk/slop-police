@@ -36,12 +36,28 @@ func hasIgnoreComment(file *File, node *ast.Node, ruleName string) bool {
 		if line := file.Line(comment.End()); line != nodeLine && line+1 != nodeLine {
 			continue
 		}
-		rules, ok := parseIgnoredRules(text[comment.Pos():comment.End()])
-		if ok && (len(rules) == 0 || slices.Contains(rules, ruleName)) {
+		if ignores(text[comment.Pos():comment.End()], ruleName) {
 			return true
 		}
 	}
 	return false
+}
+
+// IsIgnoredAt is IsIgnored for findings at a text position (such as a
+// comment) rather than a node: the line before pos must be a
+// `// slop-police-ignore [rules] [-- reason]` comment.
+func IsIgnoredAt(file *File, pos int, ruleName string) bool {
+	line := file.Line(pos)
+	if line == 0 {
+		return false
+	}
+	previous := file.Source.Text()[file.lineStarts[line-1]:file.lineStarts[line]]
+	return ignores(strings.TrimFunc(previous, isSpace), ruleName)
+}
+
+func ignores(comment string, ruleName string) bool {
+	rules, ok := parseIgnoredRules(comment)
+	return ok && (len(rules) == 0 || slices.Contains(rules, ruleName))
 }
 
 func parseIgnoredRules(comment string) ([]string, bool) {

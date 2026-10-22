@@ -35,6 +35,19 @@ func unwrapParentheses(node *ast.Node) *ast.Node {
 	return node
 }
 
+// unwrapExpression strips parentheses, `as`, `satisfies` and non-null
+// assertions, like slop-scan's unwrapExpression.
+func unwrapExpression(node *ast.Node) *ast.Node {
+	for {
+		switch node.Kind {
+		case ast.KindParenthesizedExpression, ast.KindAsExpression, ast.KindSatisfiesExpression, ast.KindNonNullExpression:
+			node = node.Expression()
+		default:
+			return node
+		}
+	}
+}
+
 func isFunctionLikeDeclaration(node *ast.Node) bool {
 	switch node.Kind {
 	case ast.KindFunctionDeclaration, ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor,

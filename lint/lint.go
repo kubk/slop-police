@@ -100,10 +100,14 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 	for i, findings := range perRule {
 		name := config.Rules[i].Rule.Name
 		for _, f := range findings {
-			if IsIgnored(f.File, f.Node, name) {
+			pos := f.Pos
+			if f.Node != nil {
+				pos = Start(f.Node, f.File.Source)
+			}
+			if f.Node != nil && IsIgnored(f.File, f.Node, name) || f.Node == nil && IsIgnoredAt(f.File, pos, name) {
 				continue
 			}
-			line, column := f.File.LineAndColumn(Start(f.Node, f.File.Source))
+			line, column := f.File.LineAndColumn(pos)
 			results = append(results, Result{name, config.Rules[i].Severity, f.File.RelPath, line + 1, column + 1, f.Message})
 		}
 	}
@@ -123,7 +127,7 @@ func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule []
 		reports := make([]Report, len(indexes))
 		for k := range indexes {
 			reports[k] = func(node *ast.Node, message string) {
-				findings[k] = append(findings[k], Finding{file, node, message})
+				findings[k] = append(findings[k], Finding{File: file, Node: node, Message: message})
 			}
 		}
 		var visit func(node *ast.Node) bool
@@ -147,7 +151,7 @@ func runFileRules(ctx *Context, rules []EnabledRule, indexes []int, perRule [][]
 		findings := make([][]Finding, len(indexes))
 		for k, ri := range indexes {
 			rules[ri].Rule.CheckFile(file, ch, rules[ri].Options, func(node *ast.Node, message string) {
-				findings[k] = append(findings[k], Finding{file, node, message})
+				findings[k] = append(findings[k], Finding{File: file, Node: node, Message: message})
 			})
 		}
 		perFile[file.Index] = findings

@@ -87,3 +87,18 @@ func lineMessages(results []lint.Result) []finding {
 	}
 	return out
 }
+
+type locatedFinding struct {
+	File    string
+	Line    int
+	Column  int
+	Message string
+}
+
+func locatedFindings(results []lint.Result) []locatedFinding {
+	var out []locatedFinding
+	for _, r := range results {
+		out = append(out, locatedFinding{r.File, r.Line, r.Column, r.Message})
+	}
+	return out
+}

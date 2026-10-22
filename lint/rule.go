@@ -17,6 +17,11 @@ func (o Options) Bool(name string) bool {
 	return value
 }
 
+func (o Options) Number(name string) float64 {
+	value, _ := o[name].(float64)
+	return value
+}
+
 // Report records a finding at node (reported at the node's start position).
 type Report func(node *ast.Node, message string)
 
@@ -47,9 +52,12 @@ func (r *Rule) defaultOption(name string) (any, bool) {
 }
 
 // Finding is a rule result before ignore comments and sorting are applied.
+// It is reported at Node's start, or at the byte offset Pos when Node is nil
+// (for what isn't a node, such as a comment).
 type Finding struct {
 	File    *File
 	Node    *ast.Node
+	Pos     int
 	Message string
 }
 

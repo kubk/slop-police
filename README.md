@@ -1,6 +1,6 @@
 # slop-police
 
-A fast, type-aware linter for TypeScript that catches the dead code and needless indirection AI coding agents tend to leave behind: methods nobody calls, object keys nobody reads, getters and aliases that only rename something.
+A fast, type-aware linter for TypeScript that catches the dead code and needless indirection AI coding agents tend to leave behind: methods nobody calls, object keys nobody reads, getters, aliases and wrappers that only rename or forward something, helpers copied instead of reused, comments that only promise future work, and errors swallowed or flattened into strings.
 
 It runs the TypeScript 7 compiler in-process, so rules resolve symbols the same way `tsc` does, across all of your tsconfig projects at once.
 
@@ -31,7 +31,12 @@ slop-police reads `slop-police.json` from the current directory:
     "no-identity-type-alias": "warn",
     "no-pass-through-getter": "error",
     "no-redundant-value-alias": "error",
-    "no-single-string-cn": "off"
+    "no-single-string-cn": "off",
+    "no-pass-through-wrapper": "error",
+    "no-duplicate-function": "warn",
+    "no-placeholder-comment": "error",
+    "no-promise-default-fallback": "error",
+    "no-stringified-unknown-error": "warn"
   }
 }
 ```
@@ -91,6 +96,24 @@ class Store {
 }
 ```
 
+### no-pass-through-wrapper
+
+A function or method whose body only returns a call (awaited or not) to a named function, passing its own parameters on as they are.
+
+```ts
+function loadUser(id: string) { // Function loadUser only forwards to api.loadUser
+  return api.loadUser(id);
+}
+```
+
+It uses types to skip wrappers that do something:
+
+- the shape is required: a method of a typed object literal (a `Proxy` handler, a Worker's `fetch`), a method that implements or overrides an inherited member, or a function assigned to a variable with a declared type. An override that only calls `super`'s method of the same name is still reported.
+- the wrapper adds types: type parameters, overloads, or parameter and return types declared differently from the callee's, like `t(key: TranslationKey)` around `translate(key: string)`.
+- it delegates to a private or protected member, like `get(key) { return this.items.get(key); }`.
+
+Calls on computed values (`getDay(date).getTime()`, `/^\s*$/.test(text)`) aren't forwarding, so they don't count.
+
 ### no-redundant-value-alias
 
 A local `const` that only renames another `const`, when using the original directly means the same thing.
@@ -111,6 +134,56 @@ function render() {
 <div className={cn("flex gap-2")} /> // Use the class string directly instead of wrapping it in cn()
 ```
 
+### no-placeholder-comment
+
+A comment that only promises future work instead of describing the code: "add more validation", "handle more cases", "can be extended in the future", "extend this logic", "customize this behavior", "future enhancement", "implement … here". Ordinary TODOs don't match.
+
+```ts
+function parse(input: string) {
+  // Add more validation here
+  return JSON.parse(input);
+}
+```
+
+### no-duplicate-function
+
+A function whose body has the same shape as functions in at least two other files: a helper that was rewritten instead of reused. Shapes ignore the names of parameters and locals and the values of literals, but not the names of what the body calls or reads. Bodies with fewer than 2 statements or 16 syntax nodes, and functions in test files, don't count. Option: `minFiles` (default `3`, at least `2`), the number of files a shape has to appear in.
+
+```ts
+// users.ts, posts.ts and teams.ts each have:
+export async function loadUsers(id: string) {
+  const response = await fetchJson("/users/" + id);
+  if (!response.ok) throw new Error("failed to load users");
+  return response.data;
+}
+// Function loadUsers has the same body shape as loadPosts (posts.ts:1), loadTeams (teams.ts:1)
+```
+
+### no-promise-default-fallback
+
+A promise `.catch()` handler that hides the rejection: an empty handler, or one that only returns `null`, `undefined`, `false`, `0`, `""`, `[]` or `{}`, optionally after `console.*` or `logger.*` calls. Only `.catch` on promises and other thenables counts.
+
+```ts
+const config = await fetchConfig().catch(() => null); // Promise rejection is replaced with null
+navigator.clipboard.writeText(text).catch(() => {}); // Promise rejection is swallowed by an empty catch handler
+const enabled = await fetchFlag().catch((error) => { // Promise rejection is logged and replaced with false
+  console.error("flag load failed", error);
+  return false;
+});
+```
+
+### no-stringified-unknown-error
+
+`error instanceof Error ? error.message : String(error)` (in either order), which flattens a caught value into a string and drops its type, stack and cause. A plain `instanceof Error` check counts when the variable is named `error`, `err`, `e` or `cause`; an `||` of `instanceof` checks counts for any name.
+
+```ts
+try {
+  await sendMessage(chatId, text);
+} catch (error) {
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }; // Caught value error is flattened into a string
+}
+```
+
 ## Ignoring findings
 
 A `// slop-police-ignore` comment directly above a statement, class member or object property silences findings in it, including everything nested inside. List rule names to silence only those, and add a reason after `--`:
@@ -124,6 +197,8 @@ class Store {
 // slop-police-ignore
 export const legacyLinks = { a: "/a", b: "/b" };
 ```
+
+For `no-placeholder-comment`, put the ignore comment on the line directly above the reported comment.
 
 ## Requirements
 
