@@ -1,3 +1,5 @@
+// The module path sits under github.com/microsoft/typescript-go because Go only
+// allows importing typescript-go's internal packages from paths under it.
 module github.com/microsoft/typescript-go/x/slop-police
 
 go 1.26

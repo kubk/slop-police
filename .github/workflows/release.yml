@@ -41,8 +41,6 @@ jobs:
               npm publish "$dir" --provenance --access public
             fi
           done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --notes "npm i -D slop-police@${GITHUB_REF_NAME#v}"

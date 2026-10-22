@@ -125,33 +125,10 @@ class Store {
 export const legacyLinks = { a: "/a", b: "/b" };
 ```
 
-## Platforms
+## Requirements
 
-Prebuilt binaries cover macOS and Linux on arm64 and x64. On Windows, use WSL.
-
-## TypeScript version
-
-The binary embeds the TypeScript 7.0.2 compiler (typescript-go), so it doesn't use the `typescript` package from your project. Your tsconfigs need to work with TypeScript 7.
-
-## Development
-
-```sh
-go test ./...
-go build ./cmd/slop-police
-```
-
-The Go module path is `github.com/microsoft/typescript-go/x/slop-police`. That's on purpose: it lets the linter import typescript-go's internal packages (checker, find-all-references, project loading), which Go only allows from paths under the same prefix. `go.mod` pins typescript-go to the exact commit a TypeScript release was built from; to upgrade, bump that pin and fix what breaks.
-
-### Releasing
-
-Bump `version` in `npm/slop-police/package.json`, commit, then push a matching tag:
-
-```sh
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-CI builds the binaries for macOS and Linux (arm64 and x64) and publishes `slop-police` plus one `slop-police-<os>-<cpu>` package per platform, which npm installs as an optional dependency, then creates a GitHub release with generated notes. Publishing needs an `NPM_TOKEN` repository secret.
+macOS or Linux on arm64 or x64 (on Windows, use WSL). The linter bundles its own TypeScript 7 compiler, so your tsconfigs need to work with TypeScript 7.
 
 ## License
 
-MIT. The published binaries include the TypeScript compiler and other dependencies; their licenses ship in `THIRD_PARTY_NOTICES.txt`.
+MIT
