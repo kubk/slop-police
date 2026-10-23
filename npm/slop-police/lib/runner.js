@@ -38,7 +38,7 @@ async function loadPlugins(root, plugins) {
     try {
       exports = await import(resolvePlugin(root, plugin));
     } catch (error) {
-      throw new LintError(`Unable to load plugin ${plugin}: ${error.message}${loadHint(error, plugin)}`, 2);
+      throw new LintError(`Unable to load plugin ${plugin}: ${error.message}`, 2);
     }
     const found = Object.values(exports).flat().filter(isRule);
     if (found.length === 0) {
@@ -60,13 +60,6 @@ function resolvePlugin(root, plugin) {
     return pathToFileURL(path.resolve(root, plugin)).href;
   }
   return pathToFileURL(createRequire(path.join(root, "package.json")).resolve(plugin)).href;
-}
-
-function loadHint(error, plugin) {
-  if (error.code === "ERR_UNKNOWN_FILE_EXTENSION" && /\.[cm]?tsx?$/.test(plugin)) {
-    return " (TypeScript plugins need Node.js 22.18 or later)";
-  }
-  return "";
 }
 
 // lint runs the built-in rules enabled in root's config in the binary and the

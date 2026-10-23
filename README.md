@@ -285,7 +285,7 @@ test("no-direct-fetch", () => {
 });
 ```
 
-Plugins need the npm launcher (`npx slop-police` or `pnpm exec slop-police`), which runs them in Node while the linter serves ASTs and types. TypeScript plugins need Node.js 22.18 or later, and published plugin packages must ship JavaScript.
+Plugins need the npm launcher (`npx slop-police` or `pnpm exec slop-police`), which runs them in Node while the linter serves ASTs and types. Published plugin packages must ship JavaScript, since Node doesn't run TypeScript from `node_modules`.
 
 ## Ignoring findings
 
@@ -305,7 +305,7 @@ For `no-placeholder-comment`, put the ignore comment on the line directly above 
 
 ## Requirements
 
-macOS or Linux on arm64 or x64 (on Windows, use WSL). The linter bundles its own TypeScript 7 compiler, so your tsconfigs need to work with TypeScript 7.
+macOS or Linux on arm64 or x64 (on Windows, use WSL), and Node.js 22.18 or later. The linter bundles its own TypeScript 7 compiler, so your tsconfigs need to work with TypeScript 7.
 
 ## License
 
