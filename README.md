@@ -6,17 +6,19 @@
 A type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind.
 </p>
 
-| | pnpm | npm |
-| --- | --- | --- |
-| Add to the project | `pnpm add -D slop-police` | `npm i -D slop-police` |
-| Run | `pnpm exec slop-police` | `npx slop-police` |
-| Run once, no install | `pnpm dlx slop-police` | `npx slop-police` |
+```sh
+pnpm add slop-police
+# or
+npm i slop-police
+```
+
+Run it with `pnpm exec slop-police` or `npx slop-police`.
 
 Example output:
 
 ```
-packages/frontend/src/store/deck-store.ts:42:3  error  unused-methods      Method DeckStore.reset is never used
-packages/api/src/shared/links/links.ts:30:3     error  unused-object-keys  links.privacyPolicy is never read
+deck-store.ts:42:3  error  unused-methods      Method DeckStore.reset is never used
+links.ts:30:3       error  unused-object-keys  links.privacyPolicy is never read
 
 2 errors, 0 warnings
 ```
