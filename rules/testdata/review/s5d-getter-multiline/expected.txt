@@ -8,4 +8,4 @@ a.ts:8:7   error  no-pass-through-getter  Getter q only returns this?.w
 a.ts:8:7   error  unused-methods          Getter A.q is never used
 a.ts:9:7   error  unused-methods          Getter A.r is never used
 
-8 problems (8 errors, 0 warnings)
+8 errors, 0 warnings

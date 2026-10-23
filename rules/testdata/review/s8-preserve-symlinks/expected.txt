@@ -2,4 +2,4 @@ exit 1
 shared/s.ts:1:28  error  unused-methods          Method S.unused is never used
 shared/s.ts:2:6   error  no-identity-type-alias  Type alias X only renames Y
 
-2 problems (2 errors, 0 warnings)
+2 errors, 0 warnings

@@ -1,4 +1,4 @@
 exit 1
 a.ts:3:6  error  no-identity-type-alias  Type alias X only renames Y
 
-1 problem (1 error, 0 warnings)
+1 error, 0 warnings

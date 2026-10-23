@@ -2,4 +2,4 @@ exit 1
 libA/x.ts:1:27  error  unused-methods  Method X.bar is never used
 libB/x.ts:1:18  error  unused-methods  Method X.bar is never used
 
-2 problems (2 errors, 0 warnings)
+2 errors, 0 warnings

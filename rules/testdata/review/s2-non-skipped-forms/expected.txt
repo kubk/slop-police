@@ -7,4 +7,4 @@ a.tsx:6:23  error  unused-methods  Method S5.u5 is never used
 a.tsx:7:23  error  unused-methods  Method S6.u6 is never used
 a.tsx:8:23  error  unused-methods  Method S7.u7 is never used
 
-7 problems (7 errors, 0 warnings)
+7 errors, 0 warnings

@@ -2,4 +2,4 @@ exit 1
 store.ts:3:3  error  unused-methods  Method Store.unused is never used
 store.ts:4:3  error  unused-methods  Method Store.other is never used
 
-2 problems (2 errors, 0 warnings)
+2 errors, 0 warnings

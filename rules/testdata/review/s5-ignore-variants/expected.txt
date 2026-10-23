@@ -9,4 +9,4 @@ a.ts:25:6  error  no-identity-type-alias  Type alias A12 only renames Y
 a.ts:36:6  error  no-identity-type-alias  Type alias A17 only renames Y
 a.ts:51:6  error  no-identity-type-alias  Type alias A19 only renames Y
 
-9 problems (9 errors, 0 warnings)
+9 errors, 0 warnings

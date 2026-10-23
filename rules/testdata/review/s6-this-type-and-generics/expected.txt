@@ -1,4 +1,4 @@
 exit 1
 a.ts:5:3  error  unused-methods  Method Builder.unused is never used
 
-1 problem (1 error, 0 warnings)
+1 error, 0 warnings

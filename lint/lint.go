@@ -192,7 +192,7 @@ func Format(results []Result) string {
 	for _, row := range rows {
 		fmt.Fprintf(&b, "%-*s  %-*s  %-*s  %s\n", widths[0], row[0], widths[1], row[1], widths[2], row[2], row[3])
 	}
-	fmt.Fprintf(&b, "\n%s (%s, %s)", plural(len(rows), "problem"), plural(errors, "error"), plural(len(rows)-errors, "warning"))
+	fmt.Fprintf(&b, "\n%s, %s", plural(errors, "error"), plural(len(rows)-errors, "warning"))
 	return b.String()
 }
 

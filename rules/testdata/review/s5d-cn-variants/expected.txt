@@ -6,4 +6,4 @@ a.ts:9:1   warning  no-single-string-cn  Use the class string directly instead o
 a.ts:10:1  warning  no-single-string-cn  Use the class string directly instead of wrapping it in cn()
 a.ts:11:1  warning  no-single-string-cn  Use the class string directly instead of wrapping it in cn()
 
-6 problems (0 errors, 6 warnings)
+0 errors, 6 warnings

@@ -131,10 +131,10 @@ new Store();
 		return string(data)
 	}
 
-	if code, stdout, _ := run(withSeverity("error")); code != 1 || stdout != "store.ts:3:3  error  unused-methods  Method Store.unused is never used\n\n1 problem (1 error, 0 warnings)\n" {
+	if code, stdout, _ := run(withSeverity("error")); code != 1 || stdout != "store.ts:3:3  error  unused-methods  Method Store.unused is never used\n\n1 error, 0 warnings\n" {
 		t.Errorf("error: exit %d, stdout %q", code, stdout)
 	}
-	if code, stdout, _ := run(withSeverity("warn")); code != 0 || !strings.Contains(stdout, "1 problem (0 errors, 1 warning)") {
+	if code, stdout, _ := run(withSeverity("warn")); code != 0 || !strings.Contains(stdout, "0 errors, 1 warning") {
 		t.Errorf("warn: exit %d, stdout %q", code, stdout)
 	}
 	if code, stdout, _ := run(withSeverity("off")); code != 0 || stdout != "No problems found\n" {

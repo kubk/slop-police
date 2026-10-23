@@ -4,4 +4,4 @@ b.cts:1:6       error  no-identity-type-alias  Type alias X only renames Y
 e.tsx:1:6       error  no-identity-type-alias  Type alias X only renames Y
 h.d.css.ts:1:6  error  no-identity-type-alias  Type alias X only renames Y
 
-4 problems (4 errors, 0 warnings)
+4 errors, 0 warnings

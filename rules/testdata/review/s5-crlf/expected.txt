@@ -3,4 +3,4 @@ a.ts:2:6   error    no-identity-type-alias  Type alias X only renames Y
 a.ts:4:8   error    no-identity-type-alias  Type alias Z only renames Y
 a.ts:5:11  warning  no-single-string-cn     Use the class string directly instead of wrapping it in cn()
 
-3 problems (2 errors, 1 warning)
+2 errors, 1 warning

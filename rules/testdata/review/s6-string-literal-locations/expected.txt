@@ -3,4 +3,4 @@ a.ts:1:43  error  unused-methods  Method Store.d is never used
 a.ts:1:50  error  unused-methods  Method Store.e is never used
 a.ts:1:57  error  unused-methods  Method Store.unused is never used
 
-3 problems (3 errors, 0 warnings)
+3 errors, 0 warnings

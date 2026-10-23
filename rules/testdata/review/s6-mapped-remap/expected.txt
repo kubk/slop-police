@@ -1,4 +1,4 @@
 exit 1
 a.ts:1:11  error  unused-methods  Method A.foo is never used
 
-1 problem (1 error, 0 warnings)
+1 error, 0 warnings

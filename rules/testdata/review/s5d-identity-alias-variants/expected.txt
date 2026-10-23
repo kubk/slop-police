@@ -6,4 +6,4 @@ a.ts:6:6    error  no-identity-type-alias  Type alias F only renames Y
 a.ts:9:20   error  no-identity-type-alias  Type alias I only renames Y
 a.ts:10:23  error  no-identity-type-alias  Type alias J only renames Y
 
-6 problems (6 errors, 0 warnings)
+6 errors, 0 warnings

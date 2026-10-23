@@ -18,7 +18,7 @@ Example output:
 packages/frontend/src/store/deck-store.ts:42:3  error  unused-methods      Method DeckStore.reset is never used
 packages/api/src/shared/links/links.ts:30:3     error  unused-object-keys  links.privacyPolicy is never read
 
-2 problems (2 errors, 0 warnings)
+2 errors, 0 warnings
 ```
 
 ## Configuration
