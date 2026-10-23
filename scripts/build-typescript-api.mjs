@@ -70,6 +70,6 @@ function nodesByKind(declarations, version) {
   ].join("\n");
 }
 
-if (process.argv[1] === import.meta.filename) {
+if (import.meta.main) {
   buildTypeScriptApi();
 }

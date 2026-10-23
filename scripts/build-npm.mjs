@@ -10,13 +10,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import main from "../npm/slop-police/package.json" with { type: "json" };
 import { buildTypeScriptApi } from "./build-typescript-api.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist", "npm");
-const main = JSON.parse(
-  fs.readFileSync(path.join(root, "npm/slop-police/package.json"), "utf8"),
-);
 
 const platforms = [
   { os: "darwin", cpu: "arm64", goarch: "arm64", label: "macOS ARM64" },
