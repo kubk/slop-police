@@ -5,11 +5,8 @@ import (
 	"github.com/microsoft/typescript-go/internal/checker"
 )
 
-type OptionDef struct {
-	Name    string
-	Default any // a decoded JSON value: bool, float64 or string for built-in rules
-}
-
+// Options maps option names to decoded JSON values (bool, float64 or string
+// for built-in rules).
 type Options map[string]any
 
 func (o Options) Bool(name string) bool {
@@ -38,20 +35,11 @@ type Report func(node *ast.Node, message string)
 // its findings (see Serve).
 type Rule struct {
 	Name           string
-	DefaultOptions []OptionDef
+	DefaultOptions Options // also the options the config may set, with their types
 
 	Visit     func(file *File, node *ast.Node, options Options, report Report)
 	CheckFile func(file *File, ch *checker.Checker, options Options, report Report)
 	Check     func(ctx *Context, options Options) []Finding
-}
-
-func (r *Rule) defaultOption(name string) (any, bool) {
-	for _, option := range r.DefaultOptions {
-		if option.Name == name {
-			return option.Default, true
-		}
-	}
-	return nil, false
 }
 
 // Finding is a rule result before ignore comments and sorting are applied.

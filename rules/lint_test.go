@@ -113,7 +113,7 @@ func TestConfigErrors(t *testing.T) {
 
 func TestPluginConfig(t *testing.T) {
 	t.Parallel()
-	pluginRules := []*lint.Rule{{Name: "no-direct-fetch", DefaultOptions: []lint.OptionDef{{Name: "allow", Default: []any{}}}}}
+	pluginRules := []*lint.Rule{{Name: "no-direct-fetch", DefaultOptions: lint.Options{"allow": []any{}}}}
 	config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["warn", {"allow": ["src/api"]}]}}`), pluginRules)
 	if err != nil {
 		t.Fatal(err)

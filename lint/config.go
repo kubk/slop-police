@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -109,12 +110,12 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 		if err != nil {
 			return nil, configErrorf("Rule %s %v", name, err)
 		}
-		merged := Options{}
-		for _, option := range rule.DefaultOptions {
-			merged[option.Name] = option.Default
+		merged := maps.Clone(rule.DefaultOptions)
+		if merged == nil {
+			merged = Options{}
 		}
 		for _, key := range sortedKeys(options) {
-			def, ok := rule.defaultOption(key)
+			def, ok := rule.DefaultOptions[key]
 			if !ok {
 				return nil, configErrorf("Unknown option for rule %s: %s", name, key)
 			}

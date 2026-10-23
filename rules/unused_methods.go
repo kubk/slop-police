@@ -22,12 +22,9 @@ import (
 //   - or find-all-references finds a reference outside class member names.
 func init() {
 	lint.Register(&lint.Rule{
-		Name: "unused-methods",
-		DefaultOptions: []lint.OptionDef{
-			{Name: "includePrivate", Default: false},
-			{Name: "includeProtected", Default: false},
-		},
-		Check: checkUnusedMethods,
+		Name:           "unused-methods",
+		DefaultOptions: lint.Options{"includePrivate": false, "includeProtected": false},
+		Check:          checkUnusedMethods,
 	})
 }
 

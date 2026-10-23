@@ -74,8 +74,8 @@ func handle[P, R any](params json.Value, fn func(*P) (R, error)) (any, error) {
 
 type startParams struct {
 	Rules []struct {
-		Name    string         `json:"name"`
-		Options map[string]any `json:"options"` // defaults
+		Name    string  `json:"name"`
+		Options Options `json:"options"` // defaults
 	} `json:"rules"`
 }
 
@@ -108,11 +108,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 	// Not nil even without rules: plugins are loaded.
 	pluginRules := make([]*Rule, 0, len(params.Rules))
 	for _, r := range params.Rules {
-		rule := &Rule{Name: r.Name}
-		for name, value := range r.Options {
-			rule.DefaultOptions = append(rule.DefaultOptions, OptionDef{Name: name, Default: value})
-		}
-		pluginRules = append(pluginRules, rule)
+		pluginRules = append(pluginRules, &Rule{Name: r.Name, DefaultOptions: r.Options})
 	}
 	config, err := LoadConfig(session.GetCurrentDirectory(), pluginRules)
 	var ctx *Context

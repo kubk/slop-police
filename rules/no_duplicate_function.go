@@ -27,7 +27,7 @@ func init() {
 	lint.Register(&lint.Rule{
 		Name: "no-duplicate-function",
 		// Two copies may be a deliberate fork; three are a pattern.
-		DefaultOptions: []lint.OptionDef{{Name: "minFiles", Default: 3.0}},
+		DefaultOptions: lint.Options{"minFiles": 3.0},
 		Check:          checkDuplicateFunctions,
 	})
 }
