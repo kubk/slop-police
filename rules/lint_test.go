@@ -3,6 +3,7 @@ package rules_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -96,14 +97,44 @@ func TestConfigErrors(t *testing.T) {
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-method": "error"}}`, "Unknown rule: unused-method"},
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"private": true}]}}`, "Unknown option for rule unused-methods: private"},
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": "fatal"}}`, `Rule unused-methods severity must be "error", "warn" or "off"`},
-		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"includePrivate": 1}]}}`, "Rule unused-methods option includePrivate must be a bool"},
+		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"includePrivate": 1}]}}`, "Rule unused-methods option includePrivate must be a boolean"},
 		{`{"projects": [], "rules": {}}`, `"projects" must be a non-empty array of tsconfig paths`},
 		{`{"projects": ["tsconfig.json"], "rule": {}}`, "Unknown config key: rule"},
 		{`[]`, "Config must be an object"},
 		{`null`, "Config must be an object"},
 	}
 	for _, test := range tests {
-		_, err := lint.ParseConfig([]byte(test.config))
+		_, err := lint.ParseConfig([]byte(test.config), nil)
+		if err == nil || err.Error() != test.want {
+			t.Errorf("%s: got error %v, want %q", test.config, err, test.want)
+		}
+	}
+}
+
+func TestPluginConfig(t *testing.T) {
+	t.Parallel()
+	pluginRules := []*lint.Rule{{Name: "no-direct-fetch", DefaultOptions: []lint.OptionDef{{Name: "allow", Default: []any{}}}}}
+	config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["warn", {"allow": ["src/api"]}]}}`), pluginRules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Rules) != 1 || config.Rules[0].Rule != pluginRules[0] || config.Rules[0].Severity != "warn" || fmt.Sprint(config.Rules[0].Options) != "map[allow:[src/api]]" {
+		t.Errorf("got rules %+v", config.Rules)
+	}
+
+	tests := []struct {
+		config      string
+		pluginRules []*lint.Rule
+		want        string
+	}{
+		{`{"projects": ["tsconfig.json"], "plugins": "./rules.ts"}`, pluginRules, `"plugins" must be an array of module paths`},
+		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": "error"}}`, nil, "Plugins are loaded by the npm launcher: run slop-police with npx or pnpm exec"},
+		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"]}`, []*lint.Rule{{Name: "unused-methods"}}, "Plugin rule unused-methods has the same name as a built-in rule"},
+		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["error", {"allow": "src/api"}]}}`, pluginRules, "Rule no-direct-fetch option allow must be an array"},
+		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["error", {"deny": []}]}}`, pluginRules, "Unknown option for rule no-direct-fetch: deny"},
+	}
+	for _, test := range tests {
+		_, err := lint.ParseConfig([]byte(test.config), test.pluginRules)
 		if err == nil || err.Error() != test.want {
 			t.Errorf("%s: got error %v, want %q", test.config, err, test.want)
 		}

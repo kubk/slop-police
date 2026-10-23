@@ -1,0 +1,35 @@
+// The API for plugin rules: defineRule, plus TypeScript 7's AST (node types,
+// SyntaxKind, is* guards and utilities) and the checker's enums and type
+// guards.
+export * from "./typescript/dist/ast/index.js";
+export {
+  ElementFlags,
+  isBigIntLiteralType,
+  isBooleanLiteralType,
+  isClassOrInterfaceType,
+  isConditionalType,
+  isErrorType,
+  isIndexedAccessType,
+  isIndexType,
+  isIntersectionType,
+  isIntrinsicType,
+  isLiteralType,
+  isNumberLiteralType,
+  isObjectType,
+  isStringLiteralType,
+  isStringMappingType,
+  isSubstitutionType,
+  isTemplateLiteralType,
+  isTupleType,
+  isTypeParameter,
+  isTypeReference,
+  isUnionType,
+  NodeBuilderFlags,
+  ObjectFlags,
+  SignatureFlags,
+  SignatureKind,
+  SymbolFlags,
+  TypeFlags,
+  TypePredicateKind,
+} from "./typescript/dist/api/sync/api.js";
+export { defineRule } from "./rule.js";

@@ -80,20 +80,28 @@ type Context struct {
 // collects the analyzed files: TypeScript sources among the projects' root
 // files, each owned by the first project that lists it, minus ignored ones.
 func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
-	// TypeScript works with forward-slash paths, also on Windows.
-	root = tspath.GetNormalizedAbsolutePath(root, "")
-	ctx := &Context{Root: root, Timing: timing, filesByPath: map[tspath.Path]*File{}}
-	fs := bundled.WrapFS(osvfs.FS())
-	session := project.NewSession(&project.SessionInit{
+	return newContext(newProjectSession(root), config, timing)
+}
+
+// newProjectSession creates a project session for root, which becomes its
+// current directory.
+func newProjectSession(root string) *project.Session {
+	return project.NewSession(&project.SessionInit{
 		BackgroundCtx: context.Background(),
-		FS:            fs,
+		FS:            bundled.WrapFS(osvfs.FS()),
 		Options: &project.SessionOptions{
-			CurrentDirectory:   root,
+			// TypeScript works with forward-slash paths, also on Windows.
+			CurrentDirectory:   tspath.GetNormalizedAbsolutePath(root, ""),
 			DefaultLibraryPath: bundled.LibPath(),
 			PositionEncoding:   lsproto.PositionEncodingKindUTF8,
 			CheckerPoolOptions: project.CheckerPoolOptions{MaxCheckers: Workers + 1},
 		},
 	})
+}
+
+func newContext(session *project.Session, config *Config, timing *Timing) (*Context, error) {
+	root := session.GetCurrentDirectory()
+	ctx := &Context{Root: root, Timing: timing, filesByPath: map[tspath.Path]*File{}}
 	request := &project.APISnapshotRequest{OpenProjects: &collections.Set[string]{}}
 	configPaths := make([]string, len(config.Projects))
 	for i, projectPath := range config.Projects {
@@ -111,7 +119,7 @@ func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
 
 	byPath := map[tspath.Path]*Project{}
 	for _, configPath := range configPaths {
-		path := tspath.ToPath(configPath, root, fs.UseCaseSensitiveFileNames())
+		path := tspath.ToPath(configPath, root, session.FS().UseCaseSensitiveFileNames())
 		p := byPath[path]
 		if p == nil {
 			proj := snapshot.ProjectCollection.GetProjectByPath(path)
@@ -143,6 +151,7 @@ func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
 			ctx.Files = append(ctx.Files, file)
 		}
 	}
+	timing.Mark(fmt.Sprintf("collect files (%d)", len(ctx.Files)))
 	return ctx, nil
 }
 

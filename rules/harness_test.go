@@ -56,7 +56,7 @@ func fixtureConfig(t *testing.T, config obj) *lint.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := lint.ParseConfig(data)
+	parsed, err := lint.ParseConfig(data, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

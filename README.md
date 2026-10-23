@@ -50,6 +50,7 @@ slop-police reads `slop-police.json` from the current directory:
 - `ignore`: glob patterns (relative to the config) for files to skip entirely.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
 - `rules`: `"error"`, `"warn"` or `"off"`, or `[severity, options]`. Rules that aren't listed are off.
+- `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise.
 
@@ -188,6 +189,101 @@ try {
   return { ok: false, error: error instanceof Error ? error.message : String(error) }; // Caught value error is flattened into a string
 }
 ```
+
+## Custom rules
+
+Write rules in TypeScript or JavaScript, list their modules in `plugins` and enable them in `rules` like built-in ones:
+
+```json
+{
+  "projects": ["tsconfig.json"],
+  "plugins": ["./slop-rules.ts"],
+  "rules": {
+    "no-direct-fetch": ["error", { "allowIn": "src/api/" }],
+    "no-needless-nullish-fallback": "warn"
+  }
+}
+```
+
+A plugin exports rules made with `defineRule`, by default or by name. `visit` has a handler per node kind, called for every node of that kind in every linted file:
+
+```ts
+// slop-rules.ts
+import { defineRule, isIdentifier, SyntaxKind } from "slop-police";
+
+export const noDirectFetch = defineRule({
+  name: "no-direct-fetch",
+  // Option defaults. The config's options must have the same types.
+  options: { allowIn: "" },
+  visit: {
+    CallExpression(node, ctx) {
+      if (ctx.options.allowIn && ctx.file.path.startsWith(ctx.options.allowIn)) return;
+      if (isIdentifier(node.expression) && node.expression.text === "fetch") {
+        ctx.report(node.expression, "Use the API client instead of fetch()");
+      }
+    },
+  },
+});
+
+export const noNeedlessNullishFallback = defineRule({
+  name: "no-needless-nullish-fallback",
+  visit: {
+    BinaryExpression(node, ctx) {
+      if (node.operatorToken.kind !== SyntaxKind.QuestionQuestionToken) return;
+      const { checker } = ctx;
+      const type = checker.getTypeAtLocation(node.left);
+      if (!type) return;
+      const nullable = [checker.getUndefinedType(), checker.getNullType()].some((t) => checker.isTypeAssignableTo(t, type));
+      if (!nullable) ctx.report(node.right, `${node.left.getText()} is never null or undefined`);
+    },
+  },
+});
+```
+
+Nodes, `SyntaxKind`, the `is*` guards and the checker come from the TypeScript 7 API that slop-police runs on. The handler's `ctx` has:
+
+- `options`: the defaults merged with the config's options.
+- `file`: the file being visited: `path` (relative to the config), `fileName`, `isTest` and `sourceFile`.
+- `checker` and `program`: those of the file's project. Each checker call is a round trip to the linter process, so check the syntax first.
+- `report(node, message)`: reports a finding at the node's start. `// slop-police-ignore` comments work as for built-in rules.
+
+For rules that compare files, `create(ctx)` returns the visitor instead, so its state lives in a closure, and `finish` runs after the last file:
+
+```ts
+import { defineRule, type Node } from "slop-police";
+
+export const noRepeatedUrl = defineRule({
+  name: "no-repeated-url",
+  create(ctx) {
+    const byUrl = new Map<string, Node[]>();
+    return {
+      StringLiteral(node) {
+        if (node.text.startsWith("https://")) byUrl.set(node.text, [...(byUrl.get(node.text) ?? []), node]);
+      },
+      finish() {
+        for (const [url, nodes] of byUrl) {
+          if (nodes.length > 2) for (const node of nodes) ctx.report(node, `${url} is hard-coded in ${nodes.length} places`);
+        }
+      },
+    };
+  },
+});
+```
+
+Test rules with `lint` from `slop-police/testing`, which runs a rule alone on a source string (or on files, given an object of paths to contents) in a strict TypeScript project:
+
+```ts
+import { lint } from "slop-police/testing";
+import { noDirectFetch } from "./slop-rules.ts";
+
+test("no-direct-fetch", () => {
+  expect(lint(noDirectFetch, `fetch("/users");`)).toEqual([
+    { line: 1, column: 1, message: "Use the API client instead of fetch()" },
+  ]);
+});
+```
+
+Plugins need the npm launcher (`npx slop-police` or `pnpm exec slop-police`), which runs them in Node while the linter serves ASTs and types. TypeScript plugins need Node.js 22.18 or later, and published plugin packages must ship JavaScript.
 
 ## Ignoring findings
 

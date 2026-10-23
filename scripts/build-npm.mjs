@@ -1,6 +1,8 @@
 // Builds the npm packages into dist/npm: one package per platform with the
 // prebuilt binary, plus the main slop-police package that depends on all of
 // them optionally, so npm installs only the one matching the user's machine.
+// The main package also gets TypeScript's JS API for plugins (see
+// build-typescript-api.mjs).
 //
 //   node scripts/build-npm.mjs                  everything
 //   node scripts/build-npm.mjs darwin-arm64     only the listed platform packages
@@ -8,6 +10,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { buildTypeScriptApi } from "./build-typescript-api.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist", "npm");
@@ -73,6 +76,7 @@ if (wants("main")) {
   const mainDir = path.join(dist, "slop-police");
   fs.rmSync(mainDir, { recursive: true, force: true });
   fs.cpSync(path.join(root, "npm/slop-police"), mainDir, { recursive: true });
+  buildTypeScriptApi(path.join(mainDir, "lib/typescript"));
   writeJson(path.join(mainDir, "package.json"), {
     ...main,
     files: [...main.files, "README.md", "LICENSE"],

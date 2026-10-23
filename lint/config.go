@@ -36,8 +36,10 @@ type Config struct {
 	Rules     []EnabledRule
 }
 
-// LoadConfig reads and validates slop-police.json in root.
-func LoadConfig(root string) (*Config, error) {
+// LoadConfig reads and validates slop-police.json in root. pluginRules are
+// the rules the npm launcher loaded from the config's plugins, or nil when
+// slop-police runs without the launcher.
+func LoadConfig(root string, pluginRules []*Rule) (*Config, error) {
 	data, err := os.ReadFile(filepath.Join(root, configFileName))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -45,11 +47,11 @@ func LoadConfig(root string) (*Config, error) {
 		}
 		return nil, configErrorf("Unable to read %s: %v", configFileName, err)
 	}
-	return ParseConfig(data)
+	return ParseConfig(data, pluginRules)
 }
 
-// ParseConfig validates a config file's contents.
-func ParseConfig(data []byte) (*Config, error) {
+// ParseConfig validates a config file's contents (see LoadConfig).
+func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 	var raw map[string]json.RawMessage
 	err := json.Unmarshal(data, &raw)
 	if err != nil && !errors.As(err, new(*json.UnmarshalTypeError)) {
@@ -60,7 +62,7 @@ func ParseConfig(data []byte) (*Config, error) {
 	}
 	for _, key := range sortedKeys(raw) {
 		switch key {
-		case "projects", "ignore", "testFiles", "rules":
+		case "projects", "plugins", "ignore", "testFiles", "rules":
 		default:
 			return nil, configErrorf("Unknown config key: %s", key)
 		}
@@ -69,6 +71,20 @@ func ParseConfig(data []byte) (*Config, error) {
 	config := &Config{}
 	if err := unmarshalOptional(raw["projects"], &config.Projects); err != nil || len(config.Projects) == 0 {
 		return nil, configErrorf(`"projects" must be a non-empty array of tsconfig paths`)
+	}
+	var plugins []string
+	if err := unmarshalOptional(raw["plugins"], &plugins); err != nil {
+		return nil, configErrorf(`"plugins" must be an array of module paths`)
+	}
+	if len(plugins) > 0 && pluginRules == nil {
+		return nil, configErrorf("Plugins are loaded by the npm launcher: run slop-police with npx or pnpm exec")
+	}
+	pluginRulesByName := map[string]*Rule{}
+	for _, rule := range pluginRules {
+		if registry[rule.Name] != nil {
+			return nil, configErrorf("Plugin rule %s has the same name as a built-in rule", rule.Name)
+		}
+		pluginRulesByName[rule.Name] = rule
 	}
 	if err := unmarshalOptional(raw["ignore"], &config.Ignore); err != nil {
 		return nil, configErrorf(`"ignore" must be an array of glob patterns`)
@@ -83,6 +99,9 @@ func ParseConfig(data []byte) (*Config, error) {
 
 	for _, name := range sortedKeys(entries) {
 		rule := registry[name]
+		if rule == nil {
+			rule = pluginRulesByName[name]
+		}
 		if rule == nil {
 			return nil, configErrorf("Unknown rule: %s", name)
 		}
@@ -100,8 +119,8 @@ func ParseConfig(data []byte) (*Config, error) {
 				return nil, configErrorf("Unknown option for rule %s: %s", name, key)
 			}
 			value := def
-			if err := json.Unmarshal(options[key], &value); err != nil || fmt.Sprintf("%T", value) != fmt.Sprintf("%T", def) {
-				return nil, configErrorf("Rule %s option %s must be a %T", name, key, def)
+			if err := json.Unmarshal(options[key], &value); err != nil || jsonType(value) != jsonType(def) {
+				return nil, configErrorf("Rule %s option %s must be %s", name, key, jsonType(def))
 			}
 			merged[key] = value
 		}
@@ -132,6 +151,23 @@ func parseRuleEntry(entry json.RawMessage) (Severity, map[string]json.RawMessage
 		return "", nil, fmt.Errorf(`severity must be "error", "warn" or "off"`)
 	}
 	return severity, options, nil
+}
+
+// jsonType names the JSON type of a decoded value.
+func jsonType(value any) string {
+	switch value.(type) {
+	case bool:
+		return "a boolean"
+	case float64:
+		return "a number"
+	case string:
+		return "a string"
+	case []any:
+		return "an array"
+	case map[string]any:
+		return "an object"
+	}
+	return "null"
 }
 
 // unmarshalOptional decodes value into target unless it is missing.

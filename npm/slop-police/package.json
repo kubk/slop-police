@@ -16,11 +16,24 @@
     "type": "git",
     "url": "git+https://github.com/kubk/slop-police.git"
   },
+  "type": "module",
   "bin": {
     "slop-police": "bin/slop-police.js"
   },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./testing": {
+      "types": "./lib/testing.d.ts",
+      "default": "./lib/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "bin"
+    "bin",
+    "lib"
   ],
   "engines": {
     "node": ">=18"

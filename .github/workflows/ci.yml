@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 jobs:
   test:
@@ -25,3 +26,32 @@ jobs:
             run: go vet ./...
           - name: Test
             run: go test ./...
+
+  plugins:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - parallel:
+          - name: Build
+            run: go build -o "$RUNNER_TEMP/slop-police" ./cmd/slop-police
+          - name: Build the TypeScript API
+            run: node scripts/build-typescript-api.mjs
+
+      - name: Test
+        run: node --test npm/slop-police/test/
+        env:
+          SLOP_POLICE_BINARY: ${{ runner.temp }}/slop-police

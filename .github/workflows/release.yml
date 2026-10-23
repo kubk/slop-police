@@ -9,16 +9,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - run: go test ./...
+    uses: ./.github/workflows/ci.yml
 
   build:
     strategy:
@@ -53,6 +44,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # Building the main package compiles TypeScript's JS API with go tool tsgo.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
 
       - uses: actions/setup-node@v6
         with:

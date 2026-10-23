@@ -7,7 +7,7 @@ import (
 
 type OptionDef struct {
 	Name    string
-	Default any // bool, float64 or string
+	Default any // a decoded JSON value: bool, float64 or string for built-in rules
 }
 
 type Options map[string]any
@@ -25,7 +25,7 @@ func (o Options) Number(name string) float64 {
 // Report records a finding at node (reported at the node's start position).
 type Report func(node *ast.Node, message string)
 
-// A Rule implements exactly one of Visit, CheckFile or Check:
+// A built-in Rule implements exactly one of Visit, CheckFile or Check:
 //
 //   - Visit: syntax only. Called for every node of every analyzed file, in a
 //     single traversal shared by all syntax rules, files in parallel.
@@ -33,6 +33,9 @@ type Report func(node *ast.Node, message string)
 //     run in parallel.
 //   - Check: whole program. Gets the Context and uses its helpers
 //     (ForEachFile, Parallel, AnyReference) for cross-file analyses.
+//
+// A plugin rule implements none: the npm launcher runs it in Node and sends
+// its findings (see Serve).
 type Rule struct {
 	Name           string
 	DefaultOptions []OptionDef

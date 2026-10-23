@@ -15,37 +15,47 @@ import (
 )
 
 type Result struct {
-	Rule     string
-	Severity Severity
-	File     string
-	Line     int // 1-based
-	Column   int // 1-based, in UTF-16 code units
-	Message  string
+	Rule     string   `json:"rule"`
+	Severity Severity `json:"severity"`
+	File     string   `json:"file"`
+	Line     int      `json:"line"`   // 1-based
+	Column   int      `json:"column"` // 1-based, in UTF-16 code units
+	Message  string   `json:"message"`
 }
 
 // Run lints the project in root (reading root/slop-police.json), prints the
 // report to stdout and returns the exit code: 0, 1 when there are errors, 2
 // for config errors (printed to stderr).
 func Run(root string, stdout, stderr io.Writer, timing *Timing) int {
-	config, err := LoadConfig(root)
+	config, err := LoadConfig(root, nil)
 	var results []Result
 	if err == nil {
 		results, err = Lint(root, config, timing)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		if errors.As(err, new(*ConfigError)) {
-			return 2
-		}
-		return 1
+		return errorExitCode(err)
 	}
 	fmt.Fprintln(stdout, Format(results))
+	return exitCode(results)
+}
+
+// exitCode is 1 when there are errors, 0 otherwise.
+func exitCode(results []Result) int {
 	for _, r := range results {
 		if r.Severity == "error" {
 			return 1
 		}
 	}
 	return 0
+}
+
+// errorExitCode is 2 for config errors, 1 for other errors.
+func errorExitCode(err error) int {
+	if errors.As(err, new(*ConfigError)) {
+		return 2
+	}
+	return 1
 }
 
 // Lint runs every enabled rule and returns the sorted findings that are not
@@ -58,12 +68,17 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	timing.Mark(fmt.Sprintf("collect files (%d)", len(ctx.Files)))
+	return collectResults(config.Rules, runRules(ctx, config.Rules)), nil
+}
 
-	perRule := make([][]Finding, len(config.Rules))
+// runRules runs the built-in rules among rules and returns the findings by
+// rule index (none for plugin rules).
+func runRules(ctx *Context, rules []EnabledRule) [][]Finding {
+	timing := ctx.Timing
+	perRule := make([][]Finding, len(rules))
 	var syntaxRules, fileRules []int
 	var wg sync.WaitGroup
-	for i, enabled := range config.Rules {
+	for i, enabled := range rules {
 		switch {
 		case enabled.Rule.Visit != nil:
 			syntaxRules = append(syntaxRules, i)
@@ -77,11 +92,11 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 	if len(syntaxRules) > 0 {
 		wg.Go(func() {
 			start := time.Now()
-			runSyntaxRules(ctx, config.Rules, syntaxRules, perRule)
+			runSyntaxRules(ctx, rules, syntaxRules, perRule)
 			timing.Span("syntax rules", time.Since(start))
 		})
 	}
-	for i, enabled := range config.Rules {
+	for i, enabled := range rules {
 		if enabled.Rule.Check != nil {
 			start := time.Now()
 			perRule[i] = enabled.Rule.Check(ctx, enabled.Options)
@@ -90,15 +105,20 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 	}
 	if len(fileRules) > 0 {
 		start := time.Now()
-		runFileRules(ctx, config.Rules, fileRules, perRule)
+		runFileRules(ctx, rules, fileRules, perRule)
 		timing.Span("file rules", time.Since(start))
 	}
 	wg.Wait()
 	timing.Mark("rules")
+	return perRule
+}
 
+// collectResults turns the findings (by rule index) that aren't suppressed
+// by ignore comments into sorted results.
+func collectResults(rules []EnabledRule, perRule [][]Finding) []Result {
 	var results []Result
 	for i, findings := range perRule {
-		name := config.Rules[i].Rule.Name
+		name := rules[i].Rule.Name
 		for _, f := range findings {
 			pos := f.Pos
 			if f.Node != nil {
@@ -108,13 +128,13 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 				continue
 			}
 			line, column := f.File.LineAndColumn(pos)
-			results = append(results, Result{name, config.Rules[i].Severity, f.File.RelPath, line + 1, column + 1, f.Message})
+			results = append(results, Result{name, rules[i].Severity, f.File.RelPath, line + 1, column + 1, f.Message})
 		}
 	}
 	slices.SortStableFunc(results, func(a, b Result) int {
 		return cmp.Or(strings.Compare(a.File, b.File), a.Line-b.Line, a.Column-b.Column, strings.Compare(a.Rule, b.Rule))
 	})
-	return results, nil
+	return results
 }
 
 // runSyntaxRules does one traversal per file (files in parallel) for all
