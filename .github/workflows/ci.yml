@@ -21,37 +21,17 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - parallel:
-          - name: Vet
-            run: go vet ./...
-          - name: Test
-            run: go test ./...
-
-  plugins:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
 
       - parallel:
-          - name: Build
-            run: go build -o "$RUNNER_TEMP/slop-police" ./cmd/slop-police
-          - name: Build the TypeScript API
-            run: node scripts/build-typescript-api.mjs
-
-      - name: Test
-        run: node --test "npm/slop-police/test/*.test.js"
-        env:
-          SLOP_POLICE_BINARY: ${{ runner.temp }}/slop-police
+          - name: Vet
+            run: go vet ./...
+          - name: Test
+            run: go test ./...
+          - name: Test plugins
+            run: |
+              go build -o "$RUNNER_TEMP/slop-police" ./cmd/slop-police
+              node scripts/build-typescript-api.mjs
+              SLOP_POLICE_BINARY="$RUNNER_TEMP/slop-police" node --test "npm/slop-police/test/*.test.js"
