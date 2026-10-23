@@ -52,6 +52,6 @@ jobs:
             run: node scripts/build-typescript-api.mjs
 
       - name: Test
-        run: node --test npm/slop-police/test/
+        run: node --test "npm/slop-police/test/*.test.js"
         env:
           SLOP_POLICE_BINARY: ${{ runner.temp }}/slop-police
