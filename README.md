@@ -42,7 +42,6 @@ slop-police reads `slop-police.json` from the current directory:
     "no-pass-through-wrapper": "error",
     "no-duplicate-function": "warn",
     "no-placeholder-comment": "error",
-    "no-promise-default-fallback": "error",
     "no-stringified-unknown-error": "warn"
   }
 }
@@ -165,19 +164,6 @@ export async function loadUsers(id: string) {
   return response.data;
 }
 // Function loadUsers has the same body shape as loadPosts (posts.ts:1), loadTeams (teams.ts:1)
-```
-
-### no-promise-default-fallback
-
-A promise `.catch()` handler that hides the rejection: an empty handler, or one that only returns `null`, `undefined`, `false`, `0`, `""`, `[]` or `{}`, optionally after `console.*` or `logger.*` calls. Only `.catch` on promises and other thenables counts.
-
-```ts
-const config = await fetchConfig().catch(() => null); // Promise rejection is replaced with null
-navigator.clipboard.writeText(text).catch(() => {}); // Promise rejection is swallowed by an empty catch handler
-const enabled = await fetchFlag().catch((error) => { // Promise rejection is logged and replaced with false
-  console.error("flag load failed", error);
-  return false;
-});
 ```
 
 ### no-stringified-unknown-error
