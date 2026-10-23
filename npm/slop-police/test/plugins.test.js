@@ -17,8 +17,8 @@ const fetchPlugin = fs.readFileSync(path.join(import.meta.dirname, "fixtures/no-
 
 test("reports with lines and UTF-16 columns", () => {
   assert.deepEqual(lint(noDirectFetch, `const emoji = "🙂"; fetch("/a");\nexport const b = await fetch("/b");\n`), [
-    { line: 1, column: 21, message: "Use the API client instead of fetch()" },
-    { line: 2, column: 24, message: "Use the API client instead of fetch()" },
+    { file: "index.ts", line: 1, column: 21, message: "Use the API client instead of fetch()" },
+    { file: "index.ts", line: 2, column: 24, message: "Use the API client instead of fetch()" },
   ]);
 });
 
@@ -48,7 +48,7 @@ declare const name: string | undefined;
 export const a = count ?? 0;
 export const b = name ?? "";
 `;
-  assert.deepEqual(lint(rule, source), [{ line: 4, column: 27, message: "count is number" }]);
+  assert.deepEqual(lint(rule, source), [{ file: "index.ts", line: 4, column: 27, message: "count is number" }]);
 });
 
 test("create keeps state across files and finish reports anywhere", () => {

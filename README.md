@@ -272,7 +272,7 @@ export const noRepeatedUrl = defineRule({
 });
 ```
 
-Test rules with `lint` from `slop-police/testing`, which runs a rule alone on a source string (or on files, given an object of paths to contents) in a strict TypeScript project:
+Test rules with `lint` from `slop-police/testing`, which runs a rule alone on a source string (as `index.ts`) or on files (an object of paths to contents) in a strict TypeScript project:
 
 ```ts
 import { lint } from "slop-police/testing";
@@ -280,7 +280,7 @@ import { noDirectFetch } from "./slop-rules.ts";
 
 test("no-direct-fetch", () => {
   expect(lint(noDirectFetch, `fetch("/users");`)).toEqual([
-    { line: 1, column: 1, message: "Use the API client instead of fetch()" },
+    { file: "index.ts", line: 1, column: 1, message: "Use the API client instead of fetch()" },
   ]);
 });
 ```

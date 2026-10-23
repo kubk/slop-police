@@ -17,9 +17,9 @@ const tsconfig = {
   include: ["**/*.ts", "**/*.tsx"],
 };
 
-// lint runs rule alone on source (index.ts) or on files (paths to contents,
-// with a default strict tsconfig.json unless one is given) and returns the
-// findings, with the file of each when given files.
+// lint runs rule alone on source (as index.ts) or on files (paths to
+// contents, with a default strict tsconfig.json unless one is given) and
+// returns its findings.
 export function lint(rule, source, options) {
   const files = typeof source === "string" ? { "index.ts": source } : source;
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "slop-police-test-"));
@@ -31,9 +31,7 @@ export function lint(rule, source, options) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, content);
     }
-    return lintWithRules(findBinary(), root, [rule]).results.map(({ file, line, column, message }) =>
-      typeof source === "string" ? { line, column, message } : { file, line, column, message },
-    );
+    return lintWithRules(findBinary(), root, [rule]).results.map(({ file, line, column, message }) => ({ file, line, column, message }));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
