@@ -1,13 +1,18 @@
-# slop-police
+<h1 align="center">slop-police</h1>
 
-A fast, type-aware linter for TypeScript that catches the dead code and needless indirection AI coding agents tend to leave behind: methods nobody calls, object keys nobody reads, getters, aliases and wrappers that only rename or forward something, helpers copied instead of reused, comments that only promise future work, and errors swallowed or flattened into strings.
+<p align="center"><b>Stop LLM crimes in your codebase</b></p>
 
-It runs the TypeScript 7 compiler in-process, so rules resolve symbols the same way `tsc` does, across all of your tsconfig projects at once.
+<p align="center">
+A type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind.
+</p>
 
-```sh
-npm i -D slop-police
-npx slop-police
-```
+| | pnpm | npm |
+| --- | --- | --- |
+| Add to the project | `pnpm add -D slop-police` | `npm i -D slop-police` |
+| Run | `pnpm exec slop-police` | `npx slop-police` |
+| Run once, no install | `pnpm dlx slop-police` | `npx slop-police` |
+
+Example output:
 
 ```
 packages/frontend/src/store/deck-store.ts:42:3  error  unused-methods      Method DeckStore.reset is never used
