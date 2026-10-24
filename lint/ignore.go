@@ -18,7 +18,7 @@ var commentFactory = ast.NewNodeFactory(ast.NodeFactoryHooks{})
 // ancestors, up to the enclosing statement.
 func IsIgnored(file *File, node *ast.Node, ruleName string) bool {
 	for current := node; current != nil && current.Kind != ast.KindSourceFile; current = current.Parent {
-		if hasIgnoreComment(file, current, ruleName) {
+		if HasIgnoreComment(file, current, ruleName) {
 			return true
 		}
 		switch current.Parent.Kind {
@@ -29,7 +29,8 @@ func IsIgnored(file *File, node *ast.Node, ruleName string) bool {
 	return false
 }
 
-func hasIgnoreComment(file *File, node *ast.Node, ruleName string) bool {
+// HasIgnoreComment is IsIgnored for the node alone, without its ancestors.
+func HasIgnoreComment(file *File, node *ast.Node, ruleName string) bool {
 	text := file.Source.Text()
 	nodeLine := file.Line(Start(node, file.Source))
 	for comment := range scanner.GetLeadingCommentRanges(commentFactory, text, node.Pos()) {

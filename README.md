@@ -40,6 +40,7 @@ slop-police reads `slop-police.json` from the current directory:
     "no-redundant-value-alias": "error",
     "no-single-string-cn": "off",
     "no-pass-through-wrapper": "error",
+    "no-duplicate-code": "error",
     "no-duplicate-function": "warn",
     "no-placeholder-comment": "error",
     "no-stringified-unknown-error": "warn"
@@ -150,6 +151,26 @@ function parse(input: string) {
   // Add more validation here
   return JSON.parse(input);
 }
+```
+
+### no-duplicate-code
+
+Copy-pasted code: at least 50 tokens in a row that repeat earlier code (in the same file or one before it by path) and span at least 10 lines. Tokens are compared by their text, so a renamed variable ends a copy, but comments, formatting, imports and TypeScript-only syntax are left out: code that differs only in its types is still a copy, and repeated types aren't reported. Test files are neither reported nor compared. `// slop-police-ignore no-duplicate-code` above a statement, class member or object property takes it out of the comparison, so it is not reported as a copy or as the original. Options: `minLines` (default `10`, counting every line a copy spans), `minTokens` (default `50`) and `isolate`, folders (relative to the config) that aren't compared with each other, such as packages that can't share code: `["packages/api", "packages/frontend"]`.
+
+```ts
+// update-card.ts and delete-card.ts both check the card the same way:
+const userId = ctx.userId;
+assert(userId);
+
+const cards = await getCardsWithDeck(ctx.db, [input.id]);
+if (cards.length === 0) {
+  throw notFound("Card not found");
+}
+const card = cards[0];
+if (card.deckAuthorId !== userId) {
+  throw forbidden("You don't own this card");
+}
+// delete-card.ts:6:5  Lines 6-16 duplicate update-card.ts:6-16
 ```
 
 ### no-duplicate-function

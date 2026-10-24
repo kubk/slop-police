@@ -5,8 +5,8 @@ import (
 	"github.com/microsoft/typescript-go/internal/checker"
 )
 
-// Options maps option names to decoded JSON values (bool, float64 or string
-// for built-in rules).
+// Options maps option names to decoded JSON values (bool, float64, string or
+// []string for built-in rules).
 type Options map[string]any
 
 func (o Options) Bool(name string) bool {
@@ -16,6 +16,11 @@ func (o Options) Bool(name string) bool {
 
 func (o Options) Number(name string) float64 {
 	value, _ := o[name].(float64)
+	return value
+}
+
+func (o Options) Strings(name string) []string {
+	value, _ := o[name].([]string)
 	return value
 }
 
