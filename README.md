@@ -9,13 +9,13 @@
   </picture>
 </p>
 
-```sh
-pnpm add -D slop-police
-# or
-npm i -D slop-police
+Paste this into your agent:
+
+```text
+Install and configure slop-police by following https://raw.githubusercontent.com/kubk/slop-police/main/INSTALL.md
 ```
 
-Add a [`slop-police.json`](#configuration) and run `npx slop-police` (or `pnpm exec slop-police`).
+Let your agent set it up so slop-police finds every real issue it can. If you prefer doing it by hand, run `npm i -D slop-police`, add a [`slop-police.json`](#configuration) and run `npx slop-police`.
 
 ## Comparison with other tools
 
@@ -29,33 +29,6 @@ Add a [`slop-police.json`](#configuration) and run `npx slop-police` (or `pnpm e
 | Helpers rewritten instead of reused        |      ✓      |      |       |
 | Pass-through wrappers, getters and aliases |      ✓      |      |       |
 | Flattened errors                           |      ✓      |      |       |
-
-## CI
-
-Make CI fail when something slips through
-
-```yaml
-- run: npx slop-police
-```
-
-## Configuration
-
-Put a `slop-police.json` in the directory you run it from:
-
-```json
-{
-  "projects": ["packages/api/tsconfig.json", "packages/frontend/tsconfig.app.json"],
-  "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"]
-}
-```
-
-- `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
-- `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
-- `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
-- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like the stricter `unused-exports` setup below, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
-- `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
-
-Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise.
 
 ## Rules
 
@@ -230,6 +203,31 @@ class Store {
   reset() {}
 }
 new Store().load();
+```
+
+## Configuration
+
+Put a `slop-police.json` in the directory you run it from:
+
+```json
+{
+  "projects": ["packages/api/tsconfig.json", "packages/frontend/tsconfig.app.json"],
+  "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"]
+}
+```
+
+- `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
+- `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
+- `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
+- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like the stricter `unused-exports` setup above, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
+- `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
+
+## CI
+
+Make CI fail when something slips through
+
+```yaml
+- run: npx slop-police
 ```
 
 ## Custom rules
