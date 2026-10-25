@@ -3,45 +3,11 @@
 <p align="center"><b>Stop LLM crimes in your codebase</b></p>
 
 <p align="center">
-A type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind.
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.webp">
+    <img src="assets/hero-light.webp" width="640" alt="slop-police flags an export only used in its own file, a function that just forwards, a variable that is just a rename, and a method that is never called">
+  </picture>
 </p>
-
-```ts
-import { api } from "./api";
-
-export type User = { id: string; name: string };
-
-export function fetchUser(id: string) {
-  return api.getUser(id);
-}
-
-export class UserCache {
-  private users = new Map<string, User>();
-
-  async get(id: string) {
-    const user = this.users.get(id) ?? (await fetchUser(id));
-    const cached = user;
-    this.users.set(id, cached);
-    return cached;
-  }
-
-  has(id: string) {
-    return this.users.has(id);
-  }
-}
-```
-
-slop-police isn't:
-
-```
-user-cache.ts:3:13   error  unused-exports            Export User is only used in its own file
-user-cache.ts:5:17   error  no-pass-through-wrapper   Function fetchUser only forwards to api.getUser
-user-cache.ts:5:17   error  unused-exports            Export fetchUser is only used in its own file
-user-cache.ts:14:11  error  no-redundant-value-alias  Local alias cached only renames user; use the original binding directly
-user-cache.ts:19:3   error  unused-methods            Method UserCache.has is never used
-
-5 errors, 0 warnings
-```
 
 ```sh
 pnpm add -D slop-police
