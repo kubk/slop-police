@@ -3,7 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: &docs
+      - "**.md"
+      - assets/**
+      - .agents/**
+      - .claude/**
+      - LICENSE
   pull_request:
+    paths-ignore: *docs
   workflow_call:
 
 jobs:
