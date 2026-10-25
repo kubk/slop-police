@@ -28,7 +28,7 @@ Add a [`slop-police.json`](#configuration) and run `npx slop-police` (or `pnpm e
 | Copy-pasted code                           |      ✓      |      |   ✓   |
 | Helpers rewritten instead of reused        |      ✓      |      |       |
 | Pass-through wrappers, getters and aliases |      ✓      |      |       |
-| Placeholder comments, flattened errors     |      ✓      |      |       |
+| Flattened errors                           |      ✓      |      |       |
 
 ## CI
 
@@ -170,17 +170,6 @@ function render() {
 
 ```tsx
 <div className={cn("flex gap-2")} /> // Use the class string directly instead of wrapping it in cn()
-```
-
-### no-placeholder-comment
-
-A comment that only promises future work instead of describing the code: "add more validation", "handle more cases", "can be extended in the future", "extend this logic", "customize this behavior", "future enhancement", "implement … here". Ordinary TODOs don't match.
-
-```ts
-function parse(input: string) {
-  // Add more validation here
-  return JSON.parse(input);
-}
 ```
 
 ### no-duplicate-code
@@ -337,8 +326,6 @@ class Store {
 // slop-police-ignore
 export const legacyLinks = { a: "/a", b: "/b" };
 ```
-
-For `no-placeholder-comment`, put the ignore comment on the line directly above the reported comment.
 
 ## Requirements
 
