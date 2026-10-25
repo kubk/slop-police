@@ -6,6 +6,12 @@
 </h1>
 
 <p align="center">
+  <a href="https://github.com/kubk/slop-police/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/kubk/slop-police/ci.yml?branch=main&label=tests" alt="Tests"></a>
+  <a href="https://www.npmjs.com/package/slop-police"><img src="https://img.shields.io/npm/dw/slop-police" alt="npm weekly downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/kubk/slop-police" alt="MIT license"></a>
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.webp?v=3">
     <img src="assets/readme-light.webp?v=3" width="1080" alt="slop-police flags an export only used in its own file, a function that just forwards, a variable that is just a rename, and a method that is never called">
