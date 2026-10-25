@@ -3,24 +3,19 @@ package rules
 import (
 	"fmt"
 	"hash/maphash"
-	"path"
 	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/microsoft/typescript-go/internal/ast"
-	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/scanner"
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
-// no-duplicate-code reports copy-pasted code the way jscpd does (with
-// --cross-formats js-ts): a run of at least minTokens tokens that repeats
-// earlier code, spanning at least minLines lines. Tokens are compared by
-// text, without comments, formatting, imports or TypeScript-only syntax, so
-// code that only differs in its types is still a copy, and duplicated types
-// aren't. Files in two different isolate folders (packages that can't share
-// code) aren't compared.
+// no-duplicate-code reports copy-pasted code the way jscpd does: a run of at
+// least minTokens tokens that repeats earlier code, spanning at least
+// minLines lines. Tokens are compared by text, without comments, formatting
+// or imports.
 const (
 	duplicateCodeRule = "no-duplicate-code"
 	// maxCopyCandidates bounds how many earlier windows with the same tokens
@@ -33,7 +28,7 @@ const (
 func init() {
 	lint.Register(&lint.Rule{
 		Name:           duplicateCodeRule,
-		DefaultOptions: lint.Options{"minLines": 10.0, "minTokens": 50.0, "isolate": []string{}},
+		DefaultOptions: lint.Options{"minLines": 11.0, "minTokens": 50.0},
 		Check:          checkDuplicateCode,
 	})
 }
@@ -63,10 +58,6 @@ func checkDuplicateCode(ctx *lint.Context, options lint.Options) []lint.Finding 
 	}
 	// The copy that comes first by path is the one the others duplicate.
 	slices.SortFunc(files, func(a, b *lint.File) int { return strings.Compare(a.RelPath, b.RelPath) })
-	folders := make([]int, len(files)) // index of the isolate folder, or -1
-	for i, file := range files {
-		folders[i] = isolateFolder(options.Strings("isolate"), file.RelPath)
-	}
 	seed := maphash.MakeSeed()
 	tokens := make([][]codeToken, len(files))
 	ctx.Parallel(len(files), func(i int) { tokens[i] = tokenizeCode(files[i], seed) })
@@ -125,9 +116,6 @@ func checkDuplicateCode(ctx *lint.Context, options lint.Options) []lint.Finding 
 			}
 			original, length := none, 0
 			for candidate, n := earlier, 0; candidate != none && n < maxCopyCandidates; candidate, n = previous[candidate.file][candidate.token], n+1 {
-				if f := folders[candidate.file]; f >= 0 && folders[fi] >= 0 && f != folders[fi] {
-					continue
-				}
 				if l := matchLength(tokens, candidate, current); l >= length {
 					original, length = candidate, l
 				}
@@ -140,17 +128,6 @@ func checkDuplicateCode(ctx *lint.Context, options lint.Options) []lint.Finding 
 		}
 	}
 	return findings
-}
-
-// isolateFolder returns the index of the folder that contains the file at
-// relPath, or -1.
-func isolateFolder(folders []string, relPath string) int {
-	for i, folder := range folders {
-		if strings.HasPrefix(relPath, path.Clean(folder)+"/") {
-			return i
-		}
-	}
-	return -1
 }
 
 // matchLength returns how many tokens from a and b are the same.
@@ -169,15 +146,14 @@ func tokenLines(file *lint.File, tokens []codeToken, start, length int) (int, in
 	return file.Line(tokens[start].pos), file.Line(tokens[start+length-1].end)
 }
 
-// tokenizeCode returns the tokens of the file's code, without
-// TypeScript-only syntax (see typeOnlyRanges).
+// tokenizeCode returns the tokens of the file's code.
 func tokenizeCode(file *lint.File, seed maphash.Seed) []codeToken {
 	text := file.Source.Text()
 	t := &codeTokenizer{file: file, seed: seed, scanner: scanner.NewScanner(), hasIgnores: strings.Contains(text, "slop-police-ignore")}
 	t.scanner.SetText(text)
 	t.scanner.SetLanguageVariant(file.Source.LanguageVariant)
 	t.node(file.Source.AsNode())
-	return withoutRanges(t.tokens, typeOnlyRanges(file.Source, t.tokens))
+	return t.tokens
 }
 
 type codeTokenizer struct {
@@ -247,138 +223,4 @@ func (t *codeTokenizer) gap(pos, end int) {
 		tokenEnd := min(t.scanner.TokenEnd(), end)
 		t.add(text[start:tokenEnd], start, tokenEnd)
 	}
-}
-
-// typeOnlyRanges returns the byte ranges of the TypeScript syntax that
-// compiling to JavaScript erases, which jscpd's js-ts mode drops: types with
-// their colons and angle brackets, type declarations, overload signatures,
-// ambient declarations, `this` parameters, `as T`, `satisfies T`, `!`, `?`
-// and TypeScript modifiers (but not those of parameter properties, which
-// assign fields). tokens are the file's tokens, for the punctuation around
-// types.
-func typeOnlyRanges(sf *ast.SourceFile, tokens []codeToken) []core.TextRange {
-	text := sf.Text()
-	var ranges []core.TextRange
-	add := func(pos, end int) {
-		if pos < end {
-			ranges = append(ranges, core.NewTextRange(pos, end))
-		}
-	}
-	// tokenAt returns the index of the first token at or after pos.
-	tokenAt := func(pos int) int {
-		i, _ := slices.BinarySearchFunc(tokens, pos, func(token codeToken, pos int) int { return token.pos - pos })
-		return i
-	}
-	tokenText := func(i int) string {
-		if i < 0 || i >= len(tokens) {
-			return ""
-		}
-		return text[tokens[i].pos:tokens[i].end]
-	}
-	start := func(node *ast.Node) int { return lint.Start(node, sf) }
-
-	var visit func(node *ast.Node) bool
-	visit = func(node *ast.Node) bool {
-		switch {
-		case isTypeOnlyNode(node):
-			add(start(node), node.End())
-			return false
-		case ast.IsTypeNode(node) && node.Kind != ast.KindExpressionWithTypeArguments:
-			pos := start(node)
-			if i := tokenAt(pos); tokenText(i-1) == ":" {
-				pos = tokens[i-1].pos
-			}
-			add(pos, node.End())
-			return false
-		case ast.IsThisParameter(node):
-			end := node.End()
-			if i := tokenAt(end); tokenText(i) == "," {
-				end = tokens[i].end
-			}
-			add(start(node), end)
-			return false
-		}
-		switch node.Kind {
-		case ast.KindAsExpression, ast.KindSatisfiesExpression, ast.KindNonNullExpression:
-			add(node.Expression().End(), node.End())
-		case ast.KindTypeAssertionExpression:
-			add(start(node), node.Expression().Pos())
-		case ast.KindHeritageClause:
-			if node.AsHeritageClause().Token == ast.KindImplementsKeyword {
-				add(start(node), node.End())
-				return false
-			}
-		}
-		if list := typeArgumentsOrParameters(node); list != nil {
-			if i, j := tokenAt(list.Pos()), tokenAt(list.End()); tokenText(i-1) == "<" && tokenText(j) == ">" {
-				add(tokens[i-1].pos, tokens[j].end)
-			}
-		}
-		node.ForEachChild(visit)
-		return false
-	}
-	visit(sf.AsNode())
-	return ranges
-}
-
-func isTypeOnlyNode(node *ast.Node) bool {
-	switch node.Kind {
-	case ast.KindInterfaceDeclaration, ast.KindTypeAliasDeclaration, ast.KindIndexSignature, ast.KindTypeParameter:
-		return true
-	case ast.KindFunctionDeclaration, ast.KindMethodDeclaration, ast.KindConstructor, ast.KindGetAccessor, ast.KindSetAccessor:
-		// Without a body: an overload signature or abstract member.
-		return node.Body() == nil
-	case ast.KindVariableStatement, ast.KindClassDeclaration, ast.KindEnumDeclaration, ast.KindModuleDeclaration, ast.KindPropertyDeclaration:
-		return ast.HasSyntacticModifier(node, ast.ModifierFlagsAmbient)
-	case ast.KindPublicKeyword, ast.KindPrivateKeyword, ast.KindProtectedKeyword, ast.KindReadonlyKeyword,
-		ast.KindOverrideKeyword, ast.KindAbstractKeyword:
-		return node.Parent.Kind != ast.KindParameter
-	case ast.KindQuestionToken, ast.KindExclamationToken:
-		// Optional and definite assignment markers, not a conditional's `?`.
-		switch node.Parent.Kind {
-		case ast.KindParameter:
-			return !ast.IsParameterPropertyDeclaration(node.Parent, node.Parent.Parent)
-		case ast.KindPropertyDeclaration, ast.KindMethodDeclaration, ast.KindVariableDeclaration:
-			return true
-		}
-	}
-	return false
-}
-
-func typeArgumentsOrParameters(node *ast.Node) *ast.NodeList {
-	switch node.Kind {
-	case ast.KindCallExpression, ast.KindNewExpression, ast.KindTaggedTemplateExpression, ast.KindExpressionWithTypeArguments,
-		ast.KindJsxOpeningElement, ast.KindJsxSelfClosingElement:
-		return node.TypeArgumentList()
-	case ast.KindClassDeclaration, ast.KindClassExpression, ast.KindFunctionDeclaration, ast.KindFunctionExpression,
-		ast.KindArrowFunction, ast.KindMethodDeclaration:
-		return node.TypeParameterList()
-	}
-	return nil
-}
-
-// withoutRanges drops the tokens that overlap ranges. A zero-width token
-// only overlaps a range it's inside of.
-func withoutRanges(tokens []codeToken, ranges []core.TextRange) []codeToken {
-	slices.SortFunc(ranges, func(a, b core.TextRange) int { return a.Pos() - b.Pos() })
-	var merged []core.TextRange
-	for _, r := range ranges {
-		if last := len(merged) - 1; last >= 0 && r.Pos() <= merged[last].End() {
-			merged[last] = core.NewTextRange(merged[last].Pos(), max(merged[last].End(), r.End()))
-		} else {
-			merged = append(merged, r)
-		}
-	}
-	kept := tokens[:0]
-	r := 0
-	for _, token := range tokens {
-		for r < len(merged) && merged[r].End() <= token.pos {
-			r++
-		}
-		if r < len(merged) && merged[r].Pos() < token.end && token.pos < merged[r].End() {
-			continue
-		}
-		kept = append(kept, token)
-	}
-	return kept
 }

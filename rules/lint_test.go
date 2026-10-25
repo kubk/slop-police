@@ -98,9 +98,6 @@ func TestConfigErrors(t *testing.T) {
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"private": true}]}}`, "Unknown option for rule unused-methods: private"},
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": "fatal"}}`, `Rule unused-methods severity must be "error", "warn" or "off"`},
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"includePrivate": 1}]}}`, "Rule unused-methods option includePrivate must be a boolean"},
-		{`{"projects": ["tsconfig.json"], "rules": {"no-duplicate-code": ["error", {"isolate": "packages/api"}]}}`, "Rule no-duplicate-code option isolate must be an array of strings"},
-		{`{"projects": ["tsconfig.json"], "rules": {"no-duplicate-code": ["error", {"isolate": [1]}]}}`, "Rule no-duplicate-code option isolate must be an array of strings"},
-		{`{"projects": ["tsconfig.json"], "rules": {"no-duplicate-code": ["error", {"isolate": null}]}}`, "Rule no-duplicate-code option isolate must be an array of strings"},
 		{`{"projects": [], "rules": {}}`, `"projects" must be a non-empty array of tsconfig paths`},
 		{`{"projects": ["tsconfig.json"], "rule": {}}`, "Unknown config key: rule"},
 		{`[]`, "Config must be an object"},
@@ -114,6 +111,30 @@ func TestConfigErrors(t *testing.T) {
 	}
 }
 
+func TestDefaultRules(t *testing.T) {
+	t.Parallel()
+	all := defaultRules(t)
+	if len(all) < 10 {
+		t.Fatalf("got %d default rules", len(all))
+	}
+	for _, rule := range all {
+		if rule.Severity != "error" || fmt.Sprint(rule.Options) != fmt.Sprint(rule.Rule.DefaultOptions) {
+			t.Errorf("%s: got severity %s, options %v", rule.Rule.Name, rule.Severity, rule.Options)
+		}
+	}
+	config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "rules": {"unused-methods": "off", "no-duplicate-code": ["warn", {"minLines": 6}]}}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, rule := range config.Rules {
+		got[rule.Rule.Name] = fmt.Sprint(rule.Severity, " ", rule.Options["minLines"])
+	}
+	if _, ok := got["unused-methods"]; ok || len(got) != len(all)-1 || got["no-duplicate-code"] != "warn 6" || got["unused-object-keys"] != "error <nil>" {
+		t.Errorf("got %v", got)
+	}
+}
+
 func TestPluginConfig(t *testing.T) {
 	t.Parallel()
 	pluginRules := []*lint.Rule{{Name: "no-direct-fetch", DefaultOptions: lint.Options{"allow": []any{}}}}
@@ -121,8 +142,17 @@ func TestPluginConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Rules) != 1 || config.Rules[0].Rule != pluginRules[0] || config.Rules[0].Severity != "warn" || fmt.Sprint(config.Rules[0].Options) != "map[allow:[src/api]]" {
+	i := slices.IndexFunc(config.Rules, func(rule lint.EnabledRule) bool { return rule.Rule == pluginRules[0] })
+	if i < 0 || config.Rules[i].Severity != "warn" || fmt.Sprint(config.Rules[i].Options) != "map[allow:[src/api]]" {
 		t.Errorf("got rules %+v", config.Rules)
+	}
+	// A plugin rule that isn't listed doesn't run.
+	config, err = lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"]}`), pluginRules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(config.Rules, func(rule lint.EnabledRule) bool { return rule.Rule == pluginRules[0] }) {
+		t.Errorf("unlisted plugin rule runs: %+v", config.Rules)
 	}
 
 	tests := []struct {

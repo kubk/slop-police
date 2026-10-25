@@ -34,16 +34,8 @@ slop-police reads `slop-police.json` from the current directory:
   "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
   "rules": {
     "unused-methods": ["error", { "includePrivate": true }],
-    "unused-object-keys": "error",
     "no-identity-type-alias": "warn",
-    "no-pass-through-getter": "error",
-    "no-redundant-value-alias": "error",
-    "no-single-string-cn": "off",
-    "no-pass-through-wrapper": "error",
-    "no-duplicate-code": "error",
-    "no-duplicate-function": "warn",
-    "no-placeholder-comment": "error",
-    "no-stringified-unknown-error": "warn"
+    "no-single-string-cn": "off"
   }
 }
 ```
@@ -51,7 +43,7 @@ slop-police reads `slop-police.json` from the current directory:
 - `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
 - `ignore`: glob patterns (relative to the config) for files to skip entirely.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
-- `rules`: `"error"`, `"warn"` or `"off"`, or `[severity, options]`. Rules that aren't listed are off.
+- `rules`: every built-in rule runs as an error with its default options. List a rule here to change that: `"error"`, `"warn"` or `"off"`, or `[severity, options]`. Plugin rules run only when they're listed.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise.
@@ -155,7 +147,7 @@ function parse(input: string) {
 
 ### no-duplicate-code
 
-Copy-pasted code: at least 50 tokens in a row that repeat earlier code (in the same file or one before it by path) and span at least 10 lines. Tokens are compared by their text, so a renamed variable ends a copy, but comments, formatting, imports and TypeScript-only syntax are left out: code that differs only in its types is still a copy, and repeated types aren't reported. Test files are neither reported nor compared. `// slop-police-ignore no-duplicate-code` above a statement, class member or object property takes it out of the comparison, so it is not reported as a copy or as the original. Options: `minLines` (default `10`, counting every line a copy spans), `minTokens` (default `50`) and `isolate`, folders (relative to the config) that aren't compared with each other, such as packages that can't share code: `["packages/api", "packages/frontend"]`.
+Copy-pasted code: at least 50 tokens in a row that repeat earlier code (in the same file or one before it by path) and span at least 11 lines. Tokens are compared by their text, types included, so a renamed variable or a different type ends a copy, but comments, formatting and imports are left out. Test files are neither reported nor compared. `// slop-police-ignore no-duplicate-code` above a statement, class member or object property takes it out of the comparison, so it is not reported as a copy or as the original. Options: `minLines` (default `11`, counting every line a copy spans) and `minTokens` (default `50`).
 
 ```ts
 // update-card.ts and delete-card.ts both check the card the same way:
@@ -201,7 +193,7 @@ try {
 
 ## Custom rules
 
-Write rules in TypeScript or JavaScript, list their modules in `plugins` and enable them in `rules` like built-in ones:
+Write rules in TypeScript or JavaScript, list their modules in `plugins` and turn them on in `rules`:
 
 ```json
 {

@@ -97,6 +97,16 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 	if err := unmarshalOptional(raw["rules"], &entries); err != nil {
 		return nil, configErrorf(`"rules" must be an object`)
 	}
+	// Built-in rules run as errors unless the config changes them. Plugin
+	// rules run only when listed.
+	if entries == nil {
+		entries = map[string]json.RawMessage{}
+	}
+	for name := range registry {
+		if _, ok := entries[name]; !ok {
+			entries[name] = json.RawMessage(`"error"`)
+		}
+	}
 
 	for _, name := range sortedKeys(entries) {
 		rule := registry[name]
@@ -119,8 +129,8 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 			if !ok {
 				return nil, configErrorf("Unknown option for rule %s: %s", name, key)
 			}
-			value, ok := decodeOption(def, options[key])
-			if !ok {
+			value := def
+			if err := json.Unmarshal(options[key], &value); err != nil || jsonType(value) != jsonType(def) {
 				return nil, configErrorf("Rule %s option %s must be %s", name, key, jsonType(def))
 			}
 			merged[key] = value
@@ -154,19 +164,6 @@ func parseRuleEntry(entry json.RawMessage) (Severity, map[string]json.RawMessage
 	return severity, options, nil
 }
 
-// decodeOption decodes an option's value, which must have the type of its
-// default def.
-func decodeOption(def any, raw json.RawMessage) (any, bool) {
-	if _, ok := def.([]string); ok {
-		var list []string
-		err := json.Unmarshal(raw, &list)
-		return list, err == nil && list != nil
-	}
-	value := def
-	err := json.Unmarshal(raw, &value)
-	return value, err == nil && jsonType(value) == jsonType(def)
-}
-
 // jsonType names the JSON type of a decoded value.
 func jsonType(value any) string {
 	switch value.(type) {
@@ -176,8 +173,6 @@ func jsonType(value any) string {
 		return "a number"
 	case string:
 		return "a string"
-	case []string:
-		return "an array of strings"
 	case []any:
 		return "an array"
 	case map[string]any:

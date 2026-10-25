@@ -42,46 +42,9 @@ func TestNoDuplicateCode(t *testing.T) {
 	}
 }
 
-func TestNoDuplicateCodeIgnoresTypes(t *testing.T) {
+func TestNoDuplicateCodeTypes(t *testing.T) {
 	t.Parallel()
-	typed := `interface User {
-  id: string;
-  name: string;
-}
-
-export abstract class UserStore<T extends User> implements Store {
-  private readonly cache = new Map<string, T>();
-  declare debug: boolean;
-  protected abstract fetch(id: string): Promise<T>;
-  load(this: UserStore<T>, id: string, force?: boolean): T | undefined {
-    const cached = this.cache.get(id)!;
-    if (cached && !force) {
-      return cached as T;
-    }
-    const user = this.fetch(id) satisfies Promise<T>;
-    user.then((value: T) => this.cache.set(id, value));
-    const names = [...this.cache.values()].map((value) => value.name);
-    console.log(names.join(", "), <string>this.label);
-    return undefined;
-  }
-}
-`
-	untyped := `export class UserStore {
-  cache = new Map();
-  load(id, force) {
-    const cached = this.cache.get(id);
-    if (cached && !force) {
-      return cached;
-    }
-    const user = this.fetch(id);
-    user.then((value) => this.cache.set(id, value));
-    const names = [...this.cache.values()].map((value) => value.name);
-    console.log(names.join(", "), this.label);
-    return undefined;
-  }
-}
-`
-	types := `export interface Settings {
+	settings := `export interface Settings {
   theme: "light" | "dark";
   language: string;
   notifications: boolean;
@@ -96,13 +59,15 @@ export abstract class UserStore<T extends User> implements Store {
 }
 `
 	results := lintFindings(t, map[string]string{
-		"a.ts": typed,
-		"b.ts": untyped,
-		// Types alone are never a copy.
-		"c.ts": types,
-		"d.ts": types,
+		// Repeated types are a copy too.
+		"a.ts": settings,
+		"b.ts": settings,
+		// Types are compared like the rest of the code, so a different one in
+		// the middle leaves two pieces that are too short.
+		"c.ts": loadFunction("loadUsers"),
+		"d.ts": strings.Replace(loadFunction("loadPosts"), "map((item)", "map((item: Item)", 1),
 	}, duplicateCodeConfig)
-	want := []locatedFinding{{"b.ts", 1, 1, "Lines 1-14 duplicate a.ts:6-21"}}
+	want := []locatedFinding{{"b.ts", 1, 1, "Lines 1-13 duplicate a.ts:1-13"}}
 	if got := locatedFindings(results); !slices.Equal(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)
 	}
@@ -110,7 +75,7 @@ export abstract class UserStore<T extends User> implements Store {
 
 func TestNoDuplicateCodeThresholds(t *testing.T) {
 	t.Parallel()
-	// 9 lines and 86 tokens, below the default of 10 lines.
+	// 9 lines and 86 tokens, below the default of 11 lines.
 	short := strings.Replace(loadFunction("load"), `  if (total > 100) {
     notify("too many users");
   }
@@ -160,25 +125,6 @@ export { a, b, c, d, e, f, g, h, i, j, k };
 		if got := lintFindings(t, files, duplicateCodeConfig); len(got) != 0 {
 			t.Errorf("%s: got %v", name, locatedFindings(got))
 		}
-	}
-}
-
-func TestNoDuplicateCodeIsolate(t *testing.T) {
-	t.Parallel()
-	results := lintFindings(t, map[string]string{
-		"packages/api/a.ts": loadFunction("loadUsers"),
-		// Isolated from api, but not within its own folder.
-		"packages/web/b.ts": loadFunction("loadPosts"),
-		"packages/web/c.ts": loadFunction("loadTeams"),
-		// Not under packages/web, so compared with everything.
-		"packages/website/d.ts": loadFunction("loadTags"),
-	}, obj{"rules": obj{"no-duplicate-code": []any{"error", obj{"isolate": []string{"packages/api", "./packages/web/"}}}}})
-	want := []locatedFinding{
-		{"packages/web/c.ts", 1, 26, "Lines 1-12 duplicate packages/web/b.ts:1-12"},
-		{"packages/website/d.ts", 1, 25, "Lines 1-12 duplicate packages/api/a.ts:1-12"},
-	}
-	if got := locatedFindings(results); !slices.Equal(got, want) {
-		t.Errorf("got %v\nwant %v", got, want)
 	}
 }
 

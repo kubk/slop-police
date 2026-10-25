@@ -52,6 +52,15 @@ func fixtureConfig(t *testing.T, config obj) *lint.Config {
 	t.Helper()
 	merged := obj{"projects": []string{"tsconfig.json"}, "testFiles": []string{"**/*.test.ts"}}
 	maps.Copy(merged, config)
+	// Tests run only the rules they list.
+	rules := obj{}
+	for _, rule := range defaultRules(t) {
+		rules[rule.Rule.Name] = "off"
+	}
+	if listed, ok := config["rules"].(obj); ok {
+		maps.Copy(rules, listed)
+	}
+	merged["rules"] = rules
 	data, err := json.Marshal(merged)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +70,16 @@ func fixtureConfig(t *testing.T, config obj) *lint.Config {
 		t.Fatal(err)
 	}
 	return parsed
+}
+
+// defaultRules returns the rules a config without "rules" runs.
+func defaultRules(t *testing.T) []lint.EnabledRule {
+	t.Helper()
+	config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"]}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return config.Rules
 }
 
 func lintFindings(t *testing.T, files map[string]string, config obj) []lint.Result {
