@@ -1,6 +1,9 @@
-<h1 align="center">slop-police</h1>
-
-<p align="center"><b>Stop LLM crimes in your codebase</b></p>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=1">
+    <img src="assets/logo-light.webp?v=1" alt="slop-police: Stop LLM crimes in your codebase">
+  </picture>
+</h1>
 
 <p align="center">
   <picture>
