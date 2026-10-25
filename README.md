@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=2">
-    <img src="assets/logo-light.webp?v=2" width="1000" alt="slop-police: Stop LLM crimes in your codebase">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=3">
+    <img src="assets/logo-light.webp?v=3" width="1000" alt="slop-police: Stop LLM crimes in your codebase">
   </picture>
 </h1>
 
