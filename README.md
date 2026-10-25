@@ -41,7 +41,7 @@ slop-police reads `slop-police.json` from the current directory:
 ```
 
 - `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
-- `ignore`: glob patterns (relative to the config) for files to skip entirely.
+- `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
 - `rules`: every built-in rule runs as an error with its default options. List a rule here to change that: `"error"`, `"warn"` or `"off"`, or `[severity, options]`. Plugin rules run only when they're listed.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.

@@ -212,6 +212,33 @@ new Store();
 	}
 }
 
+func TestGitignore(t *testing.T) {
+	t.Parallel()
+	alias := "type User = { id: string };\nexport type Member = User;\n"
+	files := map[string]string{
+		".gitignore":        "# build output\ndist/\n*.gen.ts\n!keep.gen.ts\n/local.ts\n",
+		"sub/.gitignore":    "secret.ts\n",
+		"src/a.ts":          alias,
+		"src/keep.gen.ts":   alias,
+		"src/routes.gen.ts": alias,
+		"src/local.ts":      alias,
+		"src/secret.ts":     alias,
+		"dist/b.ts":         alias,
+		"dist/keep.gen.ts":  alias, // a file in an ignored directory can't be included again
+		"local.ts":          alias,
+		"sub/secret.ts":     alias,
+	}
+	var got []string
+	for _, r := range lintFindings(t, files, obj{"rules": obj{"no-identity-type-alias": "error"}}) {
+		got = append(got, r.File)
+	}
+	slices.Sort(got)
+	want := []string{"src/a.ts", "src/keep.gen.ts", "src/local.ts", "src/secret.ts"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestIgnoreGlobs(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{

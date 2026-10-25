@@ -132,6 +132,7 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 		ctx.Projects = append(ctx.Projects, p)
 	}
 
+	gitignored := newGitignore(root)
 	for _, p := range ctx.Projects {
 		for _, fileName := range p.project.CommandLine.FileNames() {
 			if !isTypeScriptSource(fileName) {
@@ -142,7 +143,7 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 				continue
 			}
 			rel := relativePath(root, sf.FileName())
-			if matchesAny(config.Ignore, rel) {
+			if matchesAny(config.Ignore, rel) || gitignored.ignored(sf.FileName()) {
 				continue
 			}
 			file := &File{Index: len(ctx.Files), Source: sf, Project: p, IsTest: matchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files)}
