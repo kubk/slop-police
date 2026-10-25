@@ -59,23 +59,124 @@ Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise
 
 ## Rules
 
-### unused-methods
+### no-pass-through-wrapper
 
-Class methods, getters and setters that are never referenced anywhere in the analyzed projects.
+A function or method that only returns a call to another function.
+
+```ts
+function loadUser(id: string) {
+  return api.loadUser(id);
+}
+```
+
+### no-identity-type-alias
+
+A type alias that only renames another type.
+
+```ts
+type User = { id: string };
+type Member = User;
+```
+
+### no-duplicate-code
+
+Copy-pasted blocks of code. Options: `minLines` (default `11`) and `minTokens` (default `50`).
+
+```ts
+// stripe-webhook.ts
+const mailer = await Mailer.connect({
+  host: "smtp.example.com",
+  port: 465,
+  secure: true,
+  user: env.SMTP_USER,
+  password: env.SMTP_PASSWORD,
+});
+await mailer.send({ to: customer.email, subject: "Your license" });
+
+// reset-password.ts
+const mailer = await Mailer.connect({
+  host: "smtp.example.com",
+  port: 465,
+  secure: true,
+  user: env.SMTP_USER,
+  password: env.SMTP_PASSWORD,
+});
+await mailer.send({ to: user.email, subject: "Reset your password" });
+```
+
+### no-duplicate-function
+
+The same function written again in several files, with different variable names. Option: `minFiles` (default `3`).
+
+```ts
+// users.ts
+export async function loadUsers(id: string) {
+  const response = await fetchJson("/users/" + id);
+  if (!response.ok) throw new Error("failed to load users");
+  return response.data;
+}
+
+// posts.ts
+export async function loadPosts(postId: string) {
+  const res = await fetchJson("/posts/" + postId);
+  if (!res.ok) throw new Error("failed to load posts");
+  return res.data;
+}
+
+// teams.ts
+export async function loadTeams(teamId: string) {
+  const result = await fetchJson("/teams/" + teamId);
+  if (!result.ok) throw new Error("failed to load teams");
+  return result.data;
+}
+```
+
+### no-pass-through-getter
+
+A getter that only returns another property.
 
 ```ts
 class Store {
-  load() {}
-  reset() {} // Method Store.reset is never used
+  private items: Item[] = [];
+  get list() { return this.items; }
 }
-new Store().load();
 ```
 
-It knows the ways a method gets called without being named: it implements an interface member that's used, or one from a library (the library calls it), it's picked with `Pick<Class, "name">`, or an instance goes to a JSX prop whose type needs it. Private and protected members are skipped unless you turn on `includePrivate` or `includeProtected`.
+### no-redundant-value-alias
+
+A variable that only renames another variable.
+
+```ts
+function render() {
+  const user = getUser();
+  const current = user;
+  return current.name;
+}
+```
+
+### no-single-string-cn
+
+`cn()` with a single class string.
+
+```tsx
+<div className={cn("flex gap-2")} />
+```
+
+### no-stringified-unknown-error
+
+Turning a caught error into a string with `error instanceof Error ? error.message : String(error)`.
+
+```ts
+try {
+  await sendMessage(chatId, text);
+} catch (error) {
+  return { ok: false, error: error instanceof Error ? error.message : String(error) };
+}
+```
 
 ### unused-object-keys
 
-Keys of a top-level `const` object literal that are never read, as long as every use of the object reads statically known keys (`links.a`, `links["a"]`, `const { a } = links`). Objects that escape (passed to a function, spread, accessed dynamically) are skipped.
+Object keys that are never read.
 
 ```ts
 export const links = {
@@ -85,26 +186,11 @@ export const links = {
 open(links.docs);
 ```
 
-### unused-exports
-
-Agents love to `export` things just in case. This rule finds exports used only in their own file (just drop `export`) and exports nothing uses at all. Imports and re-exports count as uses, and so do uses in tests and ignored files. Files that nothing imports are entry points (`main.tsx`, a framework route, a config file), so their exports are left alone. A dynamic import (`import("./page")`) or a namespace used as a value (`Object.keys(ns)`) counts as using everything in the module.
-
-```ts
-// lib.ts, imported by main.ts as import { parse } from "./lib"
-export type Options = { strict: boolean }; // Export Options is only used in its own file
-export function parse(text: string, options?: Options) {}
-export function format() {} // Export format is never used
-```
-
-If you want to be extra strict, list your entry points in the `entry` option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
-
-```json
-"unused-exports": ["error", { "entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"] }]
-```
+An index with a literal type reads only the keys in that type, so `labels[status]` with `status: "active" | "expired"` leaves a `trial` key unused. An index typed as `string` or `any`, or an object passed elsewhere, could read any key, so the object is skipped.
 
 ### unused-enum-members
 
-Enum members nothing uses. When the enum is used as a whole (`Object.values(Status)`, `keyof typeof Status`, passed to a function), any member could be in play, so the enum is skipped.
+Enum members that are never used.
 
 ```ts
 enum Status {
@@ -114,108 +200,36 @@ enum Status {
 const isActive = (status: Status) => status === Status.Active;
 ```
 
-### no-identity-type-alias
+### unused-exports
 
-A type alias that only renames another type.
+Exports that nothing imports, or that are only used in their own file.
 
 ```ts
-type User = { id: string };
-type Member = User; // Type alias Member only renames User
+// lib.ts
+export type Options = { strict: boolean }; // Export Options is only used in its own file
+export function parse(text: string, options?: Options) {}
+export function format() {} // Export format is never used
+
+// main.ts
+import { parse } from "./lib";
 ```
 
-### no-pass-through-getter
+If you want to be extra strict, list your entry points in the `entry` option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
 
-A getter that only returns another property of `this`.
+```json
+"unused-exports": ["error", { "entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"] }]
+```
+
+### unused-methods
+
+Class methods that are never called. Here `reset` is unused.
 
 ```ts
 class Store {
-  private items: Item[] = [];
-  get list() { return this.items; } // Getter list only returns this.items
+  load() {}
+  reset() {}
 }
-```
-
-### no-pass-through-wrapper
-
-A function or method whose body only returns a call (awaited or not) to a named function, passing its own parameters on as they are.
-
-```ts
-function loadUser(id: string) { // Function loadUser only forwards to api.loadUser
-  return api.loadUser(id);
-}
-```
-
-It uses types to skip wrappers that do something:
-
-- the shape is required: a method of a typed object literal (a `Proxy` handler, a Worker's `fetch`), a method that implements or overrides an inherited member, or a function assigned to a variable with a declared type. An override that only calls `super`'s method of the same name is still reported.
-- the wrapper adds types: type parameters, overloads, or parameter and return types declared differently from the callee's, like `t(key: TranslationKey)` around `translate(key: string)`.
-- it delegates to a private or protected member, like `get(key) { return this.items.get(key); }`.
-
-Calls on computed values (`getDay(date).getTime()`, `/^\s*$/.test(text)`) aren't forwarding, so they don't count.
-
-### no-redundant-value-alias
-
-A local `const` that only renames another `const`, when using the original directly means the same thing.
-
-```ts
-function render() {
-  const user = getUser();
-  const current = user; // Local alias current only renames user; use the original binding directly
-  return current.name;
-}
-```
-
-### no-single-string-cn
-
-`cn()` called with a single static class string.
-
-```tsx
-<div className={cn("flex gap-2")} /> // Use the class string directly instead of wrapping it in cn()
-```
-
-### no-duplicate-code
-
-Copy-pasted code: at least 50 tokens in a row that repeat earlier code (in the same file or one before it by path) and span at least 11 lines. Tokens are compared by their text, types included, so a renamed variable or a different type ends a copy, but comments, formatting and imports are left out. Test files are neither reported nor compared. `// slop-police-ignore no-duplicate-code` above a statement, class member or object property takes it out of the comparison, so it is not reported as a copy or as the original. Options: `minLines` (default `11`, counting every line a copy spans) and `minTokens` (default `50`).
-
-```ts
-// update-card.ts and delete-card.ts both check the card the same way:
-const userId = ctx.userId;
-assert(userId);
-
-const cards = await getCardsWithDeck(ctx.db, [input.id]);
-if (cards.length === 0) {
-  throw notFound("Card not found");
-}
-const card = cards[0];
-if (card.deckAuthorId !== userId) {
-  throw forbidden("You don't own this card");
-}
-// delete-card.ts:6:5  Lines 6-16 duplicate update-card.ts:6-16
-```
-
-### no-duplicate-function
-
-A function whose body has the same shape as functions in at least two other files: a helper that was rewritten instead of reused. Shapes ignore the names of parameters and locals and the values of literals, but not the names of what the body calls or reads. Bodies with fewer than 2 statements or 16 syntax nodes, and functions in test files, don't count. Option: `minFiles` (default `3`, at least `2`), the number of files a shape has to appear in.
-
-```ts
-// users.ts, posts.ts and teams.ts each have:
-export async function loadUsers(id: string) {
-  const response = await fetchJson("/users/" + id);
-  if (!response.ok) throw new Error("failed to load users");
-  return response.data;
-}
-// Function loadUsers has the same body shape as loadPosts (posts.ts:1), loadTeams (teams.ts:1)
-```
-
-### no-stringified-unknown-error
-
-`error instanceof Error ? error.message : String(error)` (in either order), which flattens a caught value into a string and drops its type, stack and cause. A plain `instanceof Error` check counts when the variable is named `error`, `err`, `e` or `cause`; an `||` of `instanceof` checks counts for any name. A function that does nothing but this conversion, like `getErrorMessage(error)`, is where it belongs and isn't reported; use it instead of repeating the expression.
-
-```ts
-try {
-  await sendMessage(chatId, text);
-} catch (error) {
-  return { ok: false, error: error instanceof Error ? error.message : String(error) }; // Caught value error is flattened into a string
-}
+new Store().load();
 ```
 
 ## Custom rules
@@ -311,7 +325,7 @@ test("no-direct-fetch", () => {
 });
 ```
 
-Plugins need the npm launcher (`npx slop-police` or `pnpm exec slop-police`), which runs them in Node while the linter serves ASTs and types. Published plugin packages must ship JavaScript, since Node doesn't run TypeScript from `node_modules`.
+Plugins work only through the npm launcher (`npx slop-police`).
 
 ## Ignoring findings
 

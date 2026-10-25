@@ -3,6 +3,7 @@ package rules
 import (
 	"github.com/microsoft/typescript-go/internal/ast"
 	"github.com/microsoft/typescript-go/internal/checker"
+	"github.com/microsoft/typescript-go/internal/jsnum"
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
@@ -71,7 +72,7 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			if candidate < 0 {
 				continue
 			}
-			keys, ok := staticallyReadKeys(location)
+			keys, ok := staticallyReadKeys(ch, location)
 			uses[file.Index] = append(uses[file.Index], objectKeyUse{candidate: candidate, keys: keys, escape: !ok})
 		}
 	})
@@ -166,7 +167,7 @@ func findObjectCandidate(byDecl map[declKey]int, symbol *ast.Symbol) int {
 	return -1
 }
 
-func staticallyReadKeys(identifier *ast.Node) ([]string, bool) {
+func staticallyReadKeys(ch *checker.Checker, identifier *ast.Node) ([]string, bool) {
 	expression := identifier
 	if identifier.Parent.Kind == ast.KindPropertyAccessExpression && identifier.Parent.Name() == identifier {
 		expression = identifier.Parent
@@ -189,7 +190,7 @@ func staticallyReadKeys(identifier *ast.Node) ([]string, bool) {
 			case ast.KindStringLiteral, ast.KindNoSubstitutionTemplateLiteral, ast.KindNumericLiteral:
 				return []string{argument.Text()}, true
 			}
-			return nil, false
+			return literalKeysOfType(ch, argument)
 		}
 	case ast.KindVariableDeclaration:
 		decl := parent.AsVariableDeclaration()
@@ -214,6 +215,34 @@ func staticallyReadKeys(identifier *ast.Node) ([]string, bool) {
 		}
 	}
 	return nil, false
+}
+
+// literalKeysOfType reads the keys an index like `labels[status]` can take
+// from its type: "a" | "b", keyof typeof labels, or a type parameter
+// constrained to one of those. Any other type could be any key.
+func literalKeysOfType(ch *checker.Checker, index *ast.Node) ([]string, bool) {
+	t := ch.GetTypeAtLocation(index)
+	if t != nil && t.Flags()&checker.TypeFlagsInstantiable != 0 {
+		t = ch.GetBaseConstraintOfType(t)
+	}
+	if t == nil {
+		return nil, false
+	}
+	var keys []string
+	for _, member := range t.Distributed() {
+		if !member.IsStringLiteral() && !member.IsNumberLiteral() {
+			return nil, false
+		}
+		switch value := member.AsLiteralType().Value().(type) {
+		case string:
+			keys = append(keys, value)
+		case jsnum.Number:
+			keys = append(keys, value.String())
+		default:
+			return nil, false
+		}
+	}
+	return keys, len(keys) > 0
 }
 
 func unwrapAsConst(node *ast.Node) *ast.Node {

@@ -68,6 +68,53 @@ export const wrapped = { shorthand };
 `},
 		},
 		{
+			name: "index typed as literal union reads those keys",
+			files: map[string]string{"colors.ts": `
+type Status = "active" | "expired";
+export const statusColor = {
+  active: "green",
+  expired: "red",
+  trial: "blue",
+};
+export const color = (status: Status) => statusColor[status];
+`},
+			want: []string{"statusColor.trial is never read"},
+		},
+		{
+			name: "index narrowed, numeric, enum and constrained by a type parameter",
+			files: map[string]string{"objects.ts": `
+enum Kind {
+  A = "a",
+}
+export const narrowed = { a: 1, b: 2, unused: 3 };
+export const numeric = { 1: "one", 2: "two", 3: "three" };
+export const byEnum = { a: 1, unused: 2 };
+export const generic = { a: 1, b: 2 };
+export const read = (key: "a" | "b" | "c", level: 1 | 2) => {
+  const values = [numeric[level], byEnum[Kind.A]];
+  if (key !== "c") {
+    values.push(narrowed[key]);
+  }
+  return values;
+};
+export const pick = <K extends keyof typeof generic>(key: K) => generic[key];
+`},
+			want: []string{"narrowed.unused is never read", "numeric.3 is never read", "byEnum.unused is never read"},
+		},
+		{
+			name: "index typed as string, any or template literal reads every key",
+			files: map[string]string{"objects.ts": `
+export const byString = { a: 1, b: 2 };
+export const byAny = { a: 1, b: 2 };
+export const byTemplate = { a_1: 1, b_1: 2 };
+export const read = (s: string, x: any, t: ` + "`a_${string}`" + `) => [
+  byString[s],
+  byAny[x],
+  byTemplate[t],
+];
+`},
+		},
+		{
 			name: "typed objects and objects using this",
 			files: map[string]string{"objects.ts": `
 type Labels = { a: string; b: string };
