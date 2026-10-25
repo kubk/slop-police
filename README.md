@@ -6,49 +6,91 @@
 A type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind.
 </p>
 
+```ts
+import { api } from "./api";
+
+export type User = { id: string; name: string };
+
+export function fetchUser(id: string) {
+  return api.getUser(id);
+}
+
+export class UserCache {
+  private users = new Map<string, User>();
+
+  async get(id: string) {
+    const user = this.users.get(id) ?? (await fetchUser(id));
+    const cached = user;
+    this.users.set(id, cached);
+    return cached;
+  }
+
+  has(id: string) {
+    return this.users.has(id);
+  }
+}
+```
+
+slop-police isn't:
+
+```
+user-cache.ts:3:13   error  unused-exports            Export User is only used in its own file
+user-cache.ts:5:17   error  no-pass-through-wrapper   Function fetchUser only forwards to api.getUser
+user-cache.ts:5:17   error  unused-exports            Export fetchUser is only used in its own file
+user-cache.ts:14:11  error  no-redundant-value-alias  Local alias cached only renames user; use the original binding directly
+user-cache.ts:19:3   error  unused-methods            Method UserCache.has is never used
+
+5 errors, 0 warnings
+```
+
 ```sh
-pnpm add slop-police
+pnpm add -D slop-police
 # or
-npm i slop-police
+npm i -D slop-police
 ```
 
-Run it with `pnpm exec slop-police` or `npx slop-police`.
+Add a [`slop-police.json`](#configuration) and run `npx slop-police` (or `pnpm exec slop-police`).
 
-Example output:
+## Instead of knip and jscpd
 
-```
-deck-store.ts:42:3  error  unused-methods      Method DeckStore.reset is never used
-links.ts:30:3       error  unused-object-keys  links.privacyPolicy is never read
+|                                            | slop-police | knip | jscpd |
+| ------------------------------------------ | :---------: | :--: | :---: |
+| Unused exports and files                   |      ✓      |  ✓   |       |
+| Unused enum members                        |      ✓      |  ✓   |       |
+| Unused class methods                       |      ✓      |      |       |
+| Unused object keys                         |      ✓      |      |       |
+| Copy-pasted code                           |      ✓      |      |   ✓   |
+| Helpers rewritten instead of reused        |      ✓      |      |       |
+| Pass-through wrappers, getters and aliases |      ✓      |      |       |
+| Placeholder comments, flattened errors     |      ✓      |      |       |
 
-2 errors, 0 warnings
+## CI
+
+Make CI fail when something slips through
+
+```yaml
+- run: npx slop-police
 ```
 
 ## Configuration
 
-slop-police reads `slop-police.json` from the current directory:
+Put a `slop-police.json` in the directory you run it from:
 
 ```json
 {
   "projects": ["packages/api/tsconfig.json", "packages/frontend/tsconfig.app.json"],
   "ignore": ["**/.next/**"],
-  "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
-  "rules": {
-    "unused-methods": ["error", { "includePrivate": true }],
-    "no-identity-type-alias": "warn",
-    "no-single-string-cn": "off"
-  }
+  "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"]
 }
 ```
 
 - `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
 - `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
-- `rules`: every built-in rule runs as an error with its default options. List a rule here to change that: `"error"`, `"warn"` or `"off"`, or `[severity, options]`. Plugin rules run only when they're listed.
+- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like the stricter `unused-exports` setup below, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise.
-
-slop-police needs your dependencies installed: without their types it can't tell where a method or key is used. When imports in the analyzed files don't resolve (and no `declare module` covers them), it lists them and exits with `1` without linting. Side-effect imports like `import "./styles.css"` don't count.
 
 ## Rules
 
@@ -64,7 +106,7 @@ class Store {
 new Store().load();
 ```
 
-A member also counts as used when it implements an interface member that is used or that is declared outside the analyzed code (a library calls it), when it's named in `Pick<Class, "name">`, or when an instance is passed to a JSX prop whose type requires it. Options: `includePrivate` and `includeProtected` (both `false` by default).
+It knows the ways a method gets called without being named: it implements an interface member that's used, or one from a library (the library calls it), it's picked with `Pick<Class, "name">`, or an instance goes to a JSX prop whose type needs it. Private and protected members are skipped unless you turn on `includePrivate` or `includeProtected`.
 
 ### unused-object-keys
 
@@ -76,6 +118,35 @@ export const links = {
   legacy: "https://example.com/old", // links.legacy is never read
 };
 open(links.docs);
+```
+
+### unused-exports
+
+Agents love to `export` things just in case. This rule finds exports used only in their own file (just drop `export`) and exports nothing uses at all. Imports and re-exports count as uses, and so do uses in tests and ignored files. Files that nothing imports are entry points (`main.tsx`, a framework route, a config file), so their exports are left alone. A dynamic import (`import("./page")`) or a namespace used as a value (`Object.keys(ns)`) counts as using everything in the module.
+
+```ts
+// lib.ts, imported by main.ts as import { parse } from "./lib"
+export type Options = { strict: boolean }; // Export Options is only used in its own file
+export function parse(text: string, options?: Options) {}
+export function format() {} // Export format is never used
+```
+
+If you want to be extra strict, list your entry points in the `entry` option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
+
+```json
+"unused-exports": ["error", { "entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"] }]
+```
+
+### unused-enum-members
+
+Enum members nothing uses. When the enum is used as a whole (`Object.values(Status)`, `keyof typeof Status`, passed to a function), any member could be in play, so the enum is skipped.
+
+```ts
+enum Status {
+  Active,
+  Archived, // Enum member Status.Archived is never used
+}
+const isActive = (status: Status) => status === Status.Active;
 ```
 
 ### no-identity-type-alias

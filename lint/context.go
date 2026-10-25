@@ -69,7 +69,12 @@ type File struct {
 type Context struct {
 	Projects []*Project // in config order, duplicates included
 	Files    []*File    // analyzed files, deduplicated by first project
-	Timing   *Timing
+	// Unanalyzed are the projects' other source files (ignored ones and
+	// declaration files), minus libraries. Nothing in them is reported, but
+	// rules can count their uses of analyzed code. Their indexes follow those
+	// of Files.
+	Unanalyzed []*File
+	Timing     *Timing
 
 	filesByPath map[tspath.Path]*File
 }
@@ -137,13 +142,24 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 				continue
 			}
 			rel := relativePath(root, sf.FileName())
-			if matchesAny(config.Ignore, rel) || gitignored.ignored(sf.FileName()) {
+			if MatchesAny(config.Ignore, rel) || gitignored.ignored(sf.FileName()) {
 				continue
 			}
-			file := &File{Index: len(ctx.Files), Source: sf, Project: p, IsTest: matchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files)}
+			file := &File{Index: len(ctx.Files), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files)}
 			p.files = append(p.files, file)
 			ctx.filesByPath[sf.Path()] = file
 			ctx.Files = append(ctx.Files, file)
+		}
+	}
+	unanalyzed := map[tspath.Path]bool{}
+	for _, p := range ctx.Projects {
+		for _, sf := range p.Program.GetSourceFiles() {
+			if ctx.filesByPath[sf.Path()] != nil || unanalyzed[sf.Path()] || p.Program.IsSourceFileDefaultLibrary(sf.Path()) || p.Program.IsSourceFileFromExternalLibrary(sf) || strings.Contains(sf.FileName(), "/node_modules/") {
+				continue
+			}
+			unanalyzed[sf.Path()] = true
+			rel := relativePath(root, sf.FileName())
+			ctx.Unanalyzed = append(ctx.Unanalyzed, &File{Index: len(ctx.Files) + len(ctx.Unanalyzed), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files) + len(ctx.Unanalyzed)})
 		}
 	}
 	timing.Mark(fmt.Sprintf("collect files (%d)", len(ctx.Files)))
@@ -175,7 +191,9 @@ func relativePath(root, fileName string) string {
 	return rel
 }
 
-func matchesAny(patterns []string, path string) bool {
+// MatchesAny reports whether path (relative to the config) matches one of
+// the glob patterns.
+func MatchesAny(patterns []string, path string) bool {
 	for _, pattern := range patterns {
 		if ok, _ := doublestar.Match(pattern, path); ok {
 			return true

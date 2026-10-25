@@ -1,2 +1,4 @@
-exit 0
-No problems found
+exit 1
+a.ts:2:14  error  unused-exports  Export A is never used
+
+1 error, 0 warnings

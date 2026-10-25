@@ -130,6 +130,9 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 			if err := json.Unmarshal(options[key], &value); err != nil || jsonType(value) != jsonType(def) {
 				return nil, configErrorf("Rule %s option %s must be %s", name, key, jsonType(def))
 			}
+			if registry[name] == rule && !onlyStrings(value) {
+				return nil, configErrorf("Rule %s option %s must be an array of strings", name, key)
+			}
 			merged[key] = value
 		}
 		if severity != "off" {
@@ -159,6 +162,18 @@ func parseRuleEntry(entry json.RawMessage) (Severity, map[string]json.RawMessage
 		return "", nil, fmt.Errorf(`severity must be "error", "warn" or "off"`)
 	}
 	return severity, options, nil
+}
+
+// onlyStrings reports whether value, when it is an array, holds only strings:
+// the arrays built-in rules take are lists of names or glob patterns.
+func onlyStrings(value any) bool {
+	values, _ := value.([]any)
+	for _, v := range values {
+		if _, ok := v.(string); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // jsonType names the JSON type of a decoded value.
