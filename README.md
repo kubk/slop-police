@@ -9,6 +9,8 @@
   </picture>
 </p>
 
+## Installation
+
 Paste this into your agent:
 
 ```text
