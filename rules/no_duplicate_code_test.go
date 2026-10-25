@@ -25,6 +25,16 @@ func loadFunction(name string) string {
 `
 }
 
+// importingFiles returns a.ts and b.ts with source, plus the c.ts to k.ts
+// they import.
+func importingFiles(source string) map[string]string {
+	files := map[string]string{"a.ts": source, "b.ts": source}
+	for _, name := range strings.Split("cdefghijk", "") {
+		files[name+".ts"] = "export const " + name + " = 1;\n"
+	}
+	return files
+}
+
 func TestNoDuplicateCode(t *testing.T) {
 	t.Parallel()
 	results := lintFindings(t, map[string]string{
@@ -119,7 +129,7 @@ export { a, b, c, d, e, f, g, h, i, j, k };
 		// Test files are neither reported nor copied from.
 		"test copy":     {"a.ts": loadFunction("loadUsers"), "b.test.ts": loadFunction("loadPosts")},
 		"test original": {"a.test.ts": loadFunction("loadUsers"), "b.ts": loadFunction("loadPosts")},
-		"imports":       {"a.ts": imports, "b.ts": imports},
+		"imports":       importingFiles(imports),
 	}
 	for name, files := range tests {
 		if got := lintFindings(t, files, duplicateCodeConfig); len(got) != 0 {

@@ -31,7 +31,7 @@ func TestRedundantValueAlias(t *testing.T) {
 		files map[string]string
 		want  int
 	}{
-		{name: "snapshots, calls, property reads, typed aliases, destructuring and top-level aliases", want: 0, files: fixture(`
+		{name: "snapshots, calls, property reads, typed aliases, destructuring and top-level aliases", want: 0, files: map[string]string{"other.ts": "export const imported = 1;\n", "fixture.ts": `
 import { imported } from './other';
 const VALUE = 1;
 export const publicValue = VALUE;
@@ -48,7 +48,7 @@ function example(input) {
   const typed: number = VALUE;
   const { value } = store;
   const destructured = value;
-}`)},
+}`}},
 		{name: "shadowed binding inside a nested function", want: 1, files: fixture(`const VALUE = 1;
 function example() {
   let alias = VALUE;

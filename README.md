@@ -48,6 +48,8 @@ slop-police reads `slop-police.json` from the current directory:
 
 Exit code is `1` when there are errors, `2` for an invalid config, `0` otherwise.
 
+slop-police needs your dependencies installed: without their types it can't tell where a method or key is used. When imports in the analyzed files don't resolve (and no `declare module` covers them), it lists them and exits with `1` without linting. Side-effect imports like `import "./styles.css"` don't count.
+
 ## Rules
 
 ### unused-methods

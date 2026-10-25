@@ -153,6 +153,9 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 		}
 	}
 	timing.Mark(fmt.Sprintf("collect files (%d)", len(ctx.Files)))
+	if err := checkImports(ctx); err != nil {
+		return nil, err
+	}
 	return ctx, nil
 }
 

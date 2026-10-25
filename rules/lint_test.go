@@ -257,3 +257,37 @@ func TestIgnoreGlobs(t *testing.T) {
 		t.Errorf("with ignore: got %v, want %v", got, want)
 	}
 }
+
+func TestUnresolvedImports(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, map[string]string{
+		"globals.d.ts": `declare module "*.svg" { const url: string; export default url; }
+declare module "virtual:config" { export const apiUrl: string; }
+`,
+		"util.ts": "export const one = 1;\n",
+		"app.tsx": `import { useState } from "react";
+import "./styles.css";
+import logo from "./logo.svg";
+import { apiUrl } from "virtual:config";
+import { one } from "./util";
+import { two } from "./missing";
+export * from "lodash";
+export type Store = import("mobx").IObservableValue<number>;
+export const load = () => import("zod");
+export const react = useState;
+`,
+		"other.ts": `import { useEffect } from "react";
+export const effect = useEffect;
+`,
+	})
+	_, err := lint.Lint(root, fixtureConfig(t, obj{"rules": obj{"unused-methods": "error"}}), nil)
+	want := `Cannot find 5 imported modules; install dependencies or fix the imports:
+  react  app.tsx:1:26
+  ./missing  app.tsx:6:21
+  lodash  app.tsx:7:15
+  mobx  app.tsx:8:28
+  zod  app.tsx:9:34`
+	if err == nil || err.Error() != want {
+		t.Errorf("got %v\nwant %s", err, want)
+	}
+}
