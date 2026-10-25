@@ -20,7 +20,7 @@ Paste this into your agent:
 Install and configure slop-police by following https://raw.githubusercontent.com/kubk/slop-police/main/INSTALL.md
 ```
 
-Let your agent set it up so slop-police finds every real issue it can. If you prefer doing it by hand, run `npm i -D slop-police`, add a [`slop-police.json`](#configuration) and run `npx slop-police`.
+Let your agent properly set it up so slop-police finds every real issue it can. For manual installation run `npm i -D slop-police`, add a [`slop-police.json`](#configuration) and run `npx slop-police`
 
 ## Comparison with other tools
 
