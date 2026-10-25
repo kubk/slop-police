@@ -105,7 +105,7 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 		used.add(key)
 	}
 	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
-		collectReferencedMembers(ctx, file, ch, names, membersByDeclaration, used)
+		collectReferencedMembers(file, ch, names, membersByDeclaration, used)
 	})
 	phase("referenced members")
 
@@ -145,7 +145,7 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 		if file.IsTest {
 			continue
 		}
-		Visit(file.Source.AsNode(), func(node *ast.Node) {
+		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier {
 				candidates = append(candidates, &methodCandidate{file, node, classMemberKey(node.Parent, node.Name().Text())})
 			}
@@ -160,26 +160,23 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 // analyzed files, such as a library's interface: the library calls them, and
 // its code isn't searched for references.
 func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
-	byClass := map[*ast.Node][]*methodCandidate{}
+	byFile := map[*lint.File]map[*ast.Node][]*methodCandidate{} // by class
 	var files []*lint.File
-	seen := map[*lint.File]bool{}
 	for _, c := range candidates {
-		if len(implementedTypes(c.node.Parent)) == 0 {
+		class := c.node.Parent
+		if len(implementedTypes(class)) == 0 {
 			continue
 		}
-		byClass[c.node.Parent] = append(byClass[c.node.Parent], c)
-		if !seen[c.file] {
-			seen[c.file] = true
+		if byFile[c.file] == nil {
+			byFile[c.file] = map[*ast.Node][]*methodCandidate{}
 			files = append(files, c.file)
 		}
+		byFile[c.file][class] = append(byFile[c.file][class], c)
 	}
 	var mu sync.Mutex
 	var external []memberKey
 	ctx.ForEachFile(files, func(file *lint.File, ch *checker.Checker) {
-		for class, classCandidates := range byClass {
-			if classCandidates[0].file != file {
-				continue
-			}
+		for class, classCandidates := range byFile[file] {
 			for _, typeNode := range implementedTypes(class) {
 				properties := map[string]*ast.Symbol{}
 				for _, property := range ch.GetPropertiesOfType(ch.GetTypeAtLocation(typeNode)) {
@@ -190,16 +187,16 @@ func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandi
 					if property == nil {
 						continue
 					}
+					mu.Lock()
 					for _, declaration := range property.Declarations {
-						mu.Lock()
 						if ctx.IsAnalyzedPath(pathOf(declaration)) {
 							key := keyOfDeclaration(declaration)
 							membersByDeclaration[key] = append(membersByDeclaration[key], c.key)
 						} else {
 							external = append(external, c.key)
 						}
-						mu.Unlock()
 					}
+					mu.Unlock()
 				}
 			}
 		}
@@ -219,8 +216,8 @@ func implementedTypes(class *ast.Node) []*ast.Node {
 
 // collectReferencedMembers resolves every identifier and string literal of
 // the file named like a candidate, and every Pick<Class, "names">.
-func collectReferencedMembers(ctx *lint.Context, file *lint.File, ch *checker.Checker, names map[string]bool, membersByDeclaration map[declKey][]memberKey, used *usage) {
-	Visit(file.Source.AsNode(), func(node *ast.Node) {
+func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[string]bool, membersByDeclaration map[declKey][]memberKey, used *usage) {
+	forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 		if isPickTypeReference(node) {
 			arguments := node.TypeArguments()
 			if class := classNodeForTypeNode(ch, arguments[0]); class != nil {
@@ -237,17 +234,15 @@ func collectReferencedMembers(ctx *lint.Context, file *lint.File, ch *checker.Ch
 		if !names[node.Text()] || isClassMemberDeclarationName(node) {
 			return
 		}
-		symbol := lint.ResolveSymbol(ch, node, true)
+		symbol := resolveSymbol(ch, node)
 		if symbol == nil {
 			return
 		}
 		for _, declaration := range symbol.Declarations {
 			switch declaration.Kind {
 			case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor, ast.KindMethodSignature, ast.KindPropertySignature:
-				if ctx.IsAnalyzedPath(pathOf(declaration)) {
-					for _, key := range membersByDeclaration[keyOfDeclaration(declaration)] {
-						used.add(key)
-					}
+				for _, key := range membersByDeclaration[keyOfDeclaration(declaration)] {
+					used.add(key)
 				}
 			}
 		}
@@ -258,7 +253,7 @@ func collectReferencedMembers(ctx *lint.Context, file *lint.File, ch *checker.Ch
 // passed to a JSX attribute that the attribute's contextual type requires,
 // unless the contextual type is that class itself.
 func collectContextuallyUsedJsxMembers(file *lint.File, ch *checker.Checker, used *usage) {
-	Visit(file.Source.AsNode(), func(node *ast.Node) {
+	forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 		if node.Kind != ast.KindJsxExpression || node.Parent.Kind != ast.KindJsxAttribute {
 			return
 		}
@@ -366,7 +361,7 @@ func isPickTypeReference(node *ast.Node) bool {
 // symbol of its type name, else via its type.
 func classNodeForTypeNode(ch *checker.Checker, typeNode *ast.Node) *ast.Node {
 	if typeNode.Kind == ast.KindTypeReference {
-		if symbol := lint.ResolveSymbol(ch, typeNode.AsTypeReferenceNode().TypeName, true); symbol != nil {
+		if symbol := resolveSymbol(ch, typeNode.AsTypeReferenceNode().TypeName); symbol != nil {
 			if class := findClassLikeDeclaration(symbol.Declarations); class != nil {
 				return class
 			}

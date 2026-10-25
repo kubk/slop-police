@@ -13,8 +13,8 @@ func init() {
 	})
 }
 
-// bindingKey mirrors toBinding's key: the value declaration (or first
-// declaration) of the symbol, or the symbol itself when it has none.
+// bindingKey identifies what a name is bound to: the value declaration (or
+// first declaration) of its symbol, or the symbol itself when it has none.
 type bindingKey struct {
 	declaration *ast.Node
 	symbol      *ast.Symbol
@@ -54,17 +54,12 @@ func checkNoRedundantValueAlias(file *lint.File, ch *checker.Checker, _ lint.Opt
 	analysis.bindings = make(map[*ast.Node]*binding, len(analysis.references))
 	for _, node := range analysis.references {
 		if node.Parent.Kind == ast.KindShorthandPropertyAssignment {
-			continue
+			analysis.bindings[node] = toBinding(ch.GetShorthandAssignmentValueSymbol(node.Parent))
+		} else {
+			analysis.bindings[node] = toBinding(ch.GetSymbolAtLocation(node))
 		}
-		analysis.bindings[node] = toBinding(lint.ResolveSymbol(ch, node, false))
 	}
-	for _, node := range analysis.references {
-		if node.Parent.Kind != ast.KindShorthandPropertyAssignment {
-			continue
-		}
-		analysis.bindings[node] = toBinding(ch.GetShorthandAssignmentValueSymbol(node.Parent))
-	}
-	for _, node := range findRedundantAliases(ch, analysis) {
+	for _, node := range analysis.findRedundantAliases(ch) {
 		name := node.Name()
 		source := unwrapParentheses(node.Initializer())
 		report(name, "Local alias "+name.Text()+" only renames "+source.Text()+"; use the original binding directly")
@@ -73,7 +68,7 @@ func checkNoRedundantValueAlias(file *lint.File, ch *checker.Checker, _ lint.Opt
 
 func collectAliasFile(sf *ast.SourceFile) *aliasAnalysis {
 	analysis := &aliasAnalysis{}
-	Visit(sf.AsNode(), func(node *ast.Node) {
+	forEachNode(sf.AsNode(), func(node *ast.Node) {
 		if isAliasDeclaration(node) {
 			analysis.candidates = append(analysis.candidates, node)
 		}
@@ -86,7 +81,7 @@ func collectAliasFile(sf *ast.SourceFile) *aliasAnalysis {
 		names[node.Name().Text()] = true
 		names[unwrapParentheses(node.Initializer()).Text()] = true
 	}
-	Visit(sf.AsNode(), func(node *ast.Node) {
+	forEachNode(sf.AsNode(), func(node *ast.Node) {
 		if node.Kind == ast.KindIdentifier && names[node.Text()] && isBindingReference(node) {
 			analysis.references = append(analysis.references, node)
 		}
@@ -183,32 +178,33 @@ func visitAssignmentTarget(node *ast.Node, visitIdentifier func(*ast.Node)) {
 	}
 }
 
-func findRedundantAliases(ch *checker.Checker, analysis *aliasAnalysis) []*ast.Node {
-	keyOf := func(node *ast.Node) (bindingKey, bool) {
-		b := analysis.bindings[node]
-		if b == nil {
-			return bindingKey{}, false
-		}
-		return b.key, true
+func (a *aliasAnalysis) keyOf(node *ast.Node) (bindingKey, bool) {
+	b := a.bindings[node]
+	if b == nil {
+		return bindingKey{}, false
 	}
+	return b.key, true
+}
+
+func (a *aliasAnalysis) findRedundantAliases(ch *checker.Checker) []*ast.Node {
 	writtenKeys := map[bindingKey]bool{}
-	for _, write := range analysis.writes {
-		if key, ok := keyOf(write); ok {
+	for _, write := range a.writes {
+		if key, ok := a.keyOf(write); ok {
 			writtenKeys[key] = true
 		}
 	}
 	referencesByKey := map[bindingKey][]*ast.Node{}
-	for _, reference := range analysis.references {
-		if key, ok := keyOf(reference); ok {
+	for _, reference := range a.references {
+		if key, ok := a.keyOf(reference); ok {
 			referencesByKey[key] = append(referencesByKey[key], reference)
 		}
 	}
 
 	var result []*ast.Node
-	for _, node := range analysis.candidates {
+	for _, node := range a.candidates {
 		initializer := unwrapParentheses(node.Initializer())
-		source := analysis.bindings[initializer]
-		aliasKey, ok := keyOf(node.Name())
+		source := a.bindings[initializer]
+		aliasKey, ok := a.keyOf(node.Name())
 		if source == nil || !ok || !isConstVariable(source.symbol) {
 			continue
 		}
@@ -233,7 +229,7 @@ func findRedundantAliases(ch *checker.Checker, analysis *aliasAnalysis) []*ast.N
 		if !visibleEverywhere {
 			continue
 		}
-		if hasGuard(node, source.key, keyOf) {
+		if a.hasGuard(node, source.key) {
 			needsNarrowing := false
 			for _, reference := range aliasReferences {
 				if needsCapturedNarrowing(reference, node) {
@@ -260,12 +256,10 @@ func isConstVariable(symbol *ast.Symbol) bool {
 		declaration.Parent.Flags&ast.NodeFlagsConst != 0
 }
 
-type keyFunc func(*ast.Node) (bindingKey, bool)
-
-func hasGuard(declaration *ast.Node, sourceKey bindingKey, keyOf keyFunc) bool {
+func (a *aliasAnalysis) hasGuard(declaration *ast.Node, sourceKey bindingKey) bool {
 	for node := declaration; node.Parent != nil && !isFunctionLikeDeclaration(node.Parent); node = node.Parent {
 		parent := node.Parent
-		if parent.Kind == ast.KindIfStatement && isGuard(parent.AsIfStatement().Expression, sourceKey, keyOf) {
+		if parent.Kind == ast.KindIfStatement && a.isGuard(parent.AsIfStatement().Expression, sourceKey) {
 			return true
 		}
 		if parent.Kind == ast.KindBlock {
@@ -275,7 +269,7 @@ func hasGuard(declaration *ast.Node, sourceKey bindingKey, keyOf keyFunc) bool {
 				}
 				if statement.Kind == ast.KindIfStatement {
 					ifStatement := statement.AsIfStatement()
-					if ifStatement.ElseStatement == nil && exits(ifStatement.ThenStatement) && isGuard(ifStatement.Expression, sourceKey, keyOf) {
+					if ifStatement.ElseStatement == nil && exits(ifStatement.ThenStatement) && a.isGuard(ifStatement.Expression, sourceKey) {
 						return true
 					}
 				}
@@ -285,37 +279,37 @@ func hasGuard(declaration *ast.Node, sourceKey bindingKey, keyOf keyFunc) bool {
 	return false
 }
 
-func isGuard(expression *ast.Node, sourceKey bindingKey, keyOf keyFunc) bool {
+func (a *aliasAnalysis) isGuard(expression *ast.Node, sourceKey bindingKey) bool {
 	expression = unwrapParentheses(expression)
 	if expression.Kind == ast.KindPrefixUnaryExpression && expression.AsPrefixUnaryExpression().Operator == ast.KindExclamationToken {
-		return isGuard(expression.AsPrefixUnaryExpression().Operand, sourceKey, keyOf)
+		return a.isGuard(expression.AsPrefixUnaryExpression().Operand, sourceKey)
 	}
 	if expression.Kind == ast.KindBinaryExpression {
 		binary := expression.AsBinaryExpression()
 		switch binary.OperatorToken.Kind {
 		case ast.KindAmpersandAmpersandToken, ast.KindBarBarToken:
-			return isGuard(binary.Left, sourceKey, keyOf) || isGuard(binary.Right, sourceKey, keyOf)
+			return a.isGuard(binary.Left, sourceKey) || a.isGuard(binary.Right, sourceKey)
 		case ast.KindEqualsEqualsToken, ast.KindEqualsEqualsEqualsToken, ast.KindExclamationEqualsToken,
 			ast.KindExclamationEqualsEqualsToken, ast.KindInstanceOfKeyword:
-			return sourceInGuard(binary.Left, sourceKey, keyOf) || sourceInGuard(binary.Right, sourceKey, keyOf)
+			return a.sourceInGuard(binary.Left, sourceKey) || a.sourceInGuard(binary.Right, sourceKey)
 		}
 		return false
 	}
-	return sourceInGuard(expression, sourceKey, keyOf)
+	return a.sourceInGuard(expression, sourceKey)
 }
 
-func sourceInGuard(expression *ast.Node, sourceKey bindingKey, keyOf keyFunc) bool {
+func (a *aliasAnalysis) sourceInGuard(expression *ast.Node, sourceKey bindingKey) bool {
 	expression = unwrapParentheses(expression)
 	switch expression.Kind {
 	case ast.KindIdentifier:
-		key, ok := keyOf(expression)
+		key, ok := a.keyOf(expression)
 		return ok && key == sourceKey
 	case ast.KindPropertyAccessExpression:
-		return sourceInGuard(expression.AsPropertyAccessExpression().Expression, sourceKey, keyOf)
+		return a.sourceInGuard(expression.AsPropertyAccessExpression().Expression, sourceKey)
 	case ast.KindElementAccessExpression:
-		return sourceInGuard(expression.AsElementAccessExpression().Expression, sourceKey, keyOf)
+		return a.sourceInGuard(expression.AsElementAccessExpression().Expression, sourceKey)
 	case ast.KindTypeOfExpression:
-		return sourceInGuard(expression.AsTypeOfExpression().Expression, sourceKey, keyOf)
+		return a.sourceInGuard(expression.AsTypeOfExpression().Expression, sourceKey)
 	}
 	return false
 }

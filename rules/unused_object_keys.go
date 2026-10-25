@@ -19,12 +19,12 @@ type objectKey struct {
 }
 
 type objectCandidate struct {
-	file           *lint.File
-	name           string
-	keys           []objectKey
-	usedKeys       map[string]bool
-	escaped        bool
-	referenceCount int
+	file       *lint.File
+	name       string
+	keys       []objectKey
+	usedKeys   map[string]bool
+	escaped    bool
+	referenced bool
 }
 
 type objectKeyUse struct {
@@ -47,7 +47,7 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 	uses := make([][]objectKeyUse, len(ctx.Files))
 	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
 		var locations []*ast.Node
-		Visit(file.Source.AsNode(), func(node *ast.Node) {
+		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 			if node.Kind != ast.KindIdentifier || !names[node.Text()] {
 				return
 			}
@@ -66,8 +66,8 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			locations = append(locations, node)
 		})
 		for _, location := range locations {
-			symbol := lint.ResolveSymbol(ch, location, true)
-			candidate := findObjectCandidate(ctx, byDecl, symbol)
+			symbol := resolveSymbol(ch, location)
+			candidate := findObjectCandidate(byDecl, symbol)
 			if candidate < 0 {
 				continue
 			}
@@ -86,7 +86,7 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 		}
 		for _, use := range uses[i] {
 			c := candidates[use.candidate]
-			c.referenceCount++
+			c.referenced = true
 			if use.escape {
 				c.escaped = true
 				continue
@@ -99,7 +99,7 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 
 	var findings []lint.Finding
 	for _, c := range candidates {
-		if c.escaped || c.referenceCount == 0 {
+		if c.escaped || !c.referenced {
 			continue
 		}
 		for _, key := range c.keys {
@@ -146,12 +146,7 @@ func collectObjectCandidates(ctx *lint.Context) ([]*objectCandidate, map[declKey
 				if len(keys) == 0 {
 					continue
 				}
-				key := keyOfDeclaration(declaration)
-				if existing, ok := byDecl[key]; ok {
-					candidates[existing] = &objectCandidate{file: file, name: name.Text(), keys: keys, usedKeys: map[string]bool{}}
-					continue
-				}
-				byDecl[key] = len(candidates)
+				byDecl[keyOfDeclaration(declaration)] = len(candidates)
 				candidates = append(candidates, &objectCandidate{file: file, name: name.Text(), keys: keys, usedKeys: map[string]bool{}})
 			}
 		}
@@ -159,14 +154,11 @@ func collectObjectCandidates(ctx *lint.Context) ([]*objectCandidate, map[declKey
 	return candidates, byDecl
 }
 
-func findObjectCandidate(ctx *lint.Context, byDecl map[declKey]int, symbol *ast.Symbol) int {
+func findObjectCandidate(byDecl map[declKey]int, symbol *ast.Symbol) int {
 	if symbol == nil {
 		return -1
 	}
 	for _, declaration := range symbol.Declarations {
-		if !ctx.IsAnalyzedPath(pathOf(declaration)) {
-			continue
-		}
 		if index, ok := byDecl[keyOfDeclaration(declaration)]; ok {
 			return index
 		}
@@ -254,7 +246,7 @@ func isConstTypeReference(typeNode *ast.Node) bool {
 
 func containsThisKeyword(node *ast.Node) bool {
 	found := false
-	Visit(node, func(child *ast.Node) {
+	forEachNode(node, func(child *ast.Node) {
 		if child.Kind == ast.KindThisKeyword {
 			found = true
 		}

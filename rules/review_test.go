@@ -13,8 +13,7 @@ import (
 )
 
 // Each testdata/review/<name> directory is a project with a slop-police.json
-// and an expected.txt holding "exit <code>" followed by the output of the
-// JavaScript slop-police for it.
+// and an expected.txt holding "exit <code>" followed by the expected output.
 func TestReviewFixtures(t *testing.T) {
 	runReviewFixtures(t)
 }

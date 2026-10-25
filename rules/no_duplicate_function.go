@@ -12,9 +12,8 @@ import (
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
-// no-duplicate-function reports functions whose body has the same shape
-// (slop-scan's duplication fingerprint) as functions in at least two other
-// files: a helper that was rewritten instead of reused. Shapes ignore local
+// no-duplicate-function reports functions whose body has the same shape as
+// functions in at least two other files: a helper that was rewritten instead of reused. Shapes ignore local
 // names and literal values, but not the names of what the body uses.
 const (
 	// Bodies below these sizes repeat by coincidence.
@@ -89,7 +88,7 @@ func shapeFunctions(file *lint.File, seed maphash.Seed) []shapedFunction {
 	locals := map[string]bool{}
 	var hash maphash.Hash
 	hash.SetSeed(seed)
-	Visit(file.Source.AsNode(), func(node *ast.Node) {
+	forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 		fn, ok := functionAt(node)
 		if !ok {
 			return
@@ -107,7 +106,7 @@ func shapeFunctions(file *lint.File, seed maphash.Seed) []shapedFunction {
 		result = append(result, shapedFunction{
 			file:  file,
 			fn:    fn,
-			shape: bodyShape{fn.IsAsync(), len(fn.Function.Parameters()), statements, hash.Sum64()},
+			shape: bodyShape{hasModifier(fn.Function, ast.KindAsyncKeyword), len(fn.Function.Parameters()), statements, hash.Sum64()},
 			line:  file.Line(lint.Start(fn.Name, file.Source)) + 1,
 		})
 	})
@@ -135,7 +134,7 @@ func collectLocalNames(fn checkedFunction, locals map[string]bool) {
 			locals[name.Text()] = true
 		}
 	}
-	Visit(fn.Body, func(node *ast.Node) {
+	forEachNode(fn.Body, func(node *ast.Node) {
 		switch node.Kind {
 		case ast.KindVariableDeclaration, ast.KindFunctionDeclaration, ast.KindClassDeclaration:
 			// Catch variables are variable declarations too.

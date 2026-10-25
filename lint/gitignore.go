@@ -46,7 +46,6 @@ func (g *gitignore) ignored(fileName string) bool {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 		return false
 	}
-	rel = filepath.ToSlash(rel)
 	if dir := path.Dir(rel); dir != "." && g.dirIgnored(dir) {
 		return true
 	}
@@ -89,7 +88,7 @@ func (g *gitignore) load(dir string) []gitignorePattern {
 	if patterns, ok := g.patterns[dir]; ok {
 		return patterns
 	}
-	data, _ := os.ReadFile(filepath.Join(g.base, filepath.FromSlash(dir), ".gitignore"))
+	data, _ := os.ReadFile(filepath.Join(g.base, dir, ".gitignore"))
 	var patterns []gitignorePattern
 	for line := range strings.Lines(string(data)) {
 		line = strings.TrimRight(line, "\r\n")

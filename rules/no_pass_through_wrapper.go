@@ -12,12 +12,12 @@ func init() {
 	lint.Register(&lint.Rule{
 		Name: "no-pass-through-wrapper",
 		CheckFile: func(file *lint.File, ch *checker.Checker, _ lint.Options, report lint.Report) {
-			Visit(file.Source.AsNode(), func(node *ast.Node) {
+			forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 				fn, ok := functionAt(node)
 				if !ok {
 					return
 				}
-				call := fn.PassThroughCall()
+				call := passThroughCall(fn)
 				if call == nil || !isRedundantOverride(fn, call) && (isShapeRequired(ch, node, fn) || addsTypes(ch, fn, call) || isPrivateMemberDelegation(ch, call)) {
 					return
 				}
@@ -26,6 +26,54 @@ func init() {
 			})
 		},
 	})
+}
+
+// passThroughCall returns the call in the body of fn that is a single
+// `return f(...)` or `return await f(...)` statement, when the callee is a
+// plain path (see isPlainPath) and every argument is one of the function's
+// parameters, as is: the function only forwards to another one.
+func passThroughCall(fn checkedFunction) *ast.Node {
+	statements := fn.Body.Statements()
+	if len(statements) != 1 || statements[0].Kind != ast.KindReturnStatement {
+		return nil
+	}
+	call := statements[0].Expression()
+	if call != nil && call.Kind == ast.KindAwaitExpression {
+		call = call.Expression()
+	}
+	if call == nil || call.Kind != ast.KindCallExpression || !isPlainPath(call.Expression()) {
+		return nil
+	}
+	parameters := map[string]bool{}
+	for _, parameter := range fn.Function.Parameters() {
+		if name := parameter.Name(); name.Kind == ast.KindIdentifier {
+			parameters[name.Text()] = true
+		}
+	}
+	for _, argument := range call.Arguments() {
+		if argument.Kind != ast.KindIdentifier || !parameters[argument.Text()] {
+			return nil
+		}
+	}
+	return call
+}
+
+// isPlainPath reports whether node only names something, like load,
+// this.store.load or api["users"].load, without computing anything: no calls
+// (x().y() does work before y), no `new`, no literal receivers.
+func isPlainPath(node *ast.Node) bool {
+	switch node.Kind {
+	case ast.KindIdentifier, ast.KindThisKeyword, ast.KindSuperKeyword:
+		return true
+	case ast.KindPropertyAccessExpression, ast.KindParenthesizedExpression, ast.KindNonNullExpression:
+		return isPlainPath(node.Expression())
+	case ast.KindElementAccessExpression:
+		switch node.AsElementAccessExpression().ArgumentExpression.Kind {
+		case ast.KindStringLiteral, ast.KindNoSubstitutionTemplateLiteral, ast.KindNumericLiteral:
+			return isPlainPath(node.Expression())
+		}
+	}
+	return false
 }
 
 // isRedundantOverride reports whether a method only calls the method it

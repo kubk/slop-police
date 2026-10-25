@@ -33,9 +33,9 @@ var Workers = runtime.GOMAXPROCS(0)
 // project only gets as many as its size pays for.
 var FilesPerChecker = 200
 
-// ChunkSize is how many neighbouring files (which tend to share imports, and
+// chunkSize is how many neighbouring files (which tend to share imports, and
 // so type-checking work) are assigned to the same checker.
-const ChunkSize = 64
+const chunkSize = 64
 
 type Project struct {
 	ConfigPath string
@@ -67,20 +67,11 @@ type File struct {
 }
 
 type Context struct {
-	Root     string
 	Projects []*Project // in config order, duplicates included
 	Files    []*File    // analyzed files, deduplicated by first project
 	Timing   *Timing
 
 	filesByPath map[tspath.Path]*File
-}
-
-// NewContext opens the configured projects the way the TypeScript API server
-// does (one project session, all projects opened in one request) and
-// collects the analyzed files: TypeScript sources among the projects' root
-// files, each owned by the first project that lists it, minus ignored ones.
-func NewContext(root string, config *Config, timing *Timing) (*Context, error) {
-	return newContext(newProjectSession(root), config, timing)
 }
 
 // newProjectSession creates a project session for root, which becomes its
@@ -90,7 +81,6 @@ func newProjectSession(root string) *project.Session {
 		BackgroundCtx: context.Background(),
 		FS:            bundled.WrapFS(osvfs.FS()),
 		Options: &project.SessionOptions{
-			// TypeScript works with forward-slash paths, also on Windows.
 			CurrentDirectory:   tspath.GetNormalizedAbsolutePath(root, ""),
 			DefaultLibraryPath: bundled.LibPath(),
 			PositionEncoding:   lsproto.PositionEncodingKindUTF8,
@@ -99,9 +89,13 @@ func newProjectSession(root string) *project.Session {
 	})
 }
 
+// newContext opens the configured projects the way the TypeScript API server
+// does (one project session, all projects opened in one request) and
+// collects the analyzed files: TypeScript sources among the projects' root
+// files, each owned by the first project that lists it, minus ignored ones.
 func newContext(session *project.Session, config *Config, timing *Timing) (*Context, error) {
 	root := session.GetCurrentDirectory()
-	ctx := &Context{Root: root, Timing: timing, filesByPath: map[tspath.Path]*File{}}
+	ctx := &Context{Timing: timing, filesByPath: map[tspath.Path]*File{}}
 	request := &project.APISnapshotRequest{OpenProjects: &collections.Set[string]{}}
 	configPaths := make([]string, len(config.Projects))
 	for i, projectPath := range config.Projects {
@@ -176,9 +170,9 @@ func isTypeScriptSource(fileName string) bool {
 func relativePath(root, fileName string) string {
 	rel, err := filepath.Rel(root, fileName)
 	if err != nil {
-		return filepath.ToSlash(fileName)
+		return fileName
 	}
-	return filepath.ToSlash(rel)
+	return rel
 }
 
 func matchesAny(patterns []string, path string) bool {
@@ -192,11 +186,6 @@ func matchesAny(patterns []string, path string) bool {
 
 func (c *Context) IsAnalyzedPath(path tspath.Path) bool {
 	return c.filesByPath[path] != nil
-}
-
-// FileOf returns the analyzed file containing node, or nil.
-func (c *Context) FileOf(node *ast.Node) *File {
-	return c.filesByPath[ast.GetSourceFileOfNode(node).Path()]
 }
 
 // ProjectsContaining returns the configured projects (in config order,
@@ -245,7 +234,7 @@ func (c *Context) ForEachFile(files []*File, fn func(f *File, ch *checker.Checke
 	var groups []*group
 	for _, f := range files {
 		c.ensureCheckers(f.Project)
-		k := key{f.Project, (f.projectIndex / ChunkSize) % len(f.Project.checkers)}
+		k := key{f.Project, (f.projectIndex / chunkSize) % len(f.Project.checkers)}
 		i, ok := groupIndex[k]
 		if !ok {
 			i = len(groups)
@@ -348,14 +337,4 @@ func anyAccepted(entries []*ls.SymbolAndEntries, accept func(ref *ast.Node) bool
 		}
 	}
 	return false
-}
-
-// ResolveSymbol is getSymbolAtLocation, followed by getAliasedSymbol for
-// alias symbols when followAliases is set.
-func ResolveSymbol(ch *checker.Checker, node *ast.Node, followAliases bool) *ast.Symbol {
-	symbol := ch.GetSymbolAtLocation(node)
-	if followAliases && symbol != nil && symbol.Flags&ast.SymbolFlagsAlias != 0 {
-		symbol = ch.GetAliasedSymbol(symbol)
-	}
-	return symbol
 }

@@ -61,10 +61,7 @@ func errorExitCode(err error) int {
 // Lint runs every enabled rule and returns the sorted findings that are not
 // suppressed by ignore comments.
 func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
-	if len(config.Rules) == 0 {
-		return nil, nil
-	}
-	ctx, err := NewContext(root, config, timing)
+	ctx, err := newContext(newProjectSession(root), config, timing)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +121,7 @@ func collectResults(rules []EnabledRule, perRule [][]Finding) []Result {
 			if f.Node != nil {
 				pos = Start(f.Node, f.File.Source)
 			}
-			if f.Node != nil && IsIgnored(f.File, f.Node, name) || f.Node == nil && IsIgnoredAt(f.File, pos, name) {
+			if f.Node != nil && isIgnored(f.File, f.Node, name) || f.Node == nil && isIgnoredAt(f.File, pos, name) {
 				continue
 			}
 			line, column := f.File.LineAndColumn(pos)
@@ -143,13 +140,7 @@ func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule []
 	perFile := make([][][]Finding, len(ctx.Files))
 	ctx.Parallel(len(ctx.Files), func(fi int) {
 		file := ctx.Files[fi]
-		findings := make([][]Finding, len(indexes))
-		reports := make([]Report, len(indexes))
-		for k := range indexes {
-			reports[k] = func(node *ast.Node, message string) {
-				findings[k] = append(findings[k], Finding{File: file, Node: node, Message: message})
-			}
-		}
+		findings, reports := fileReports(file, len(indexes))
 		var visit func(node *ast.Node) bool
 		visit = func(node *ast.Node) bool {
 			for k, ri := range indexes {
@@ -168,23 +159,34 @@ func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule []
 func runFileRules(ctx *Context, rules []EnabledRule, indexes []int, perRule [][]Finding) {
 	perFile := make([][][]Finding, len(ctx.Files))
 	ctx.ForEachFile(ctx.Files, func(file *File, ch *checker.Checker) {
-		findings := make([][]Finding, len(indexes))
+		findings, reports := fileReports(file, len(indexes))
 		for k, ri := range indexes {
-			rules[ri].Rule.CheckFile(file, ch, rules[ri].Options, func(node *ast.Node, message string) {
-				findings[k] = append(findings[k], Finding{File: file, Node: node, Message: message})
-			})
+			rules[ri].Rule.CheckFile(file, ch, rules[ri].Options, reports[k])
 		}
 		perFile[file.Index] = findings
 	})
 	collectPerFile(perFile, indexes, perRule)
 }
 
+// fileReports returns count reports for findings in file, and the findings
+// they record, by report.
+func fileReports(file *File, count int) ([][]Finding, []Report) {
+	findings := make([][]Finding, count)
+	reports := make([]Report, count)
+	for k := range reports {
+		reports[k] = func(node *ast.Node, message string) {
+			findings[k] = append(findings[k], Finding{File: file, Node: node, Message: message})
+		}
+	}
+	return findings, reports
+}
+
+// collectPerFile adds the findings of each file (by position among indexes)
+// to perRule, in file order.
 func collectPerFile(perFile [][][]Finding, indexes []int, perRule [][]Finding) {
 	for k, ri := range indexes {
 		for _, findings := range perFile {
-			if findings != nil {
-				perRule[ri] = append(perRule[ri], findings[k]...)
-			}
+			perRule[ri] = append(perRule[ri], findings[k]...)
 		}
 	}
 }

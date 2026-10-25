@@ -121,9 +121,6 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 			return nil, configErrorf("Rule %s %v", name, err)
 		}
 		merged := maps.Clone(rule.DefaultOptions)
-		if merged == nil {
-			merged = Options{}
-		}
 		for _, key := range sortedKeys(options) {
 			def, ok := rule.DefaultOptions[key]
 			if !ok {

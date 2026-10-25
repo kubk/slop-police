@@ -13,10 +13,10 @@ const ignoreDirective = "slop-police-ignore"
 
 var commentFactory = ast.NewNodeFactory(ast.NodeFactoryHooks{})
 
-// IsIgnored reports whether a `// slop-police-ignore [rules] [-- reason]`
+// isIgnored reports whether a `// slop-police-ignore [rules] [-- reason]`
 // comment ends on the line of (or the line before) the node or one of its
 // ancestors, up to the enclosing statement.
-func IsIgnored(file *File, node *ast.Node, ruleName string) bool {
+func isIgnored(file *File, node *ast.Node, ruleName string) bool {
 	for current := node; current != nil && current.Kind != ast.KindSourceFile; current = current.Parent {
 		if HasIgnoreComment(file, current, ruleName) {
 			return true
@@ -29,7 +29,7 @@ func IsIgnored(file *File, node *ast.Node, ruleName string) bool {
 	return false
 }
 
-// HasIgnoreComment is IsIgnored for the node alone, without its ancestors.
+// HasIgnoreComment is isIgnored for the node alone, without its ancestors.
 func HasIgnoreComment(file *File, node *ast.Node, ruleName string) bool {
 	text := file.Source.Text()
 	nodeLine := file.Line(Start(node, file.Source))
@@ -44,10 +44,10 @@ func HasIgnoreComment(file *File, node *ast.Node, ruleName string) bool {
 	return false
 }
 
-// IsIgnoredAt is IsIgnored for findings at a text position (such as a
+// isIgnoredAt is isIgnored for findings at a text position (such as a
 // comment) rather than a node: the line before pos must be a
 // `// slop-police-ignore [rules] [-- reason]` comment.
-func IsIgnoredAt(file *File, pos int, ruleName string) bool {
+func isIgnoredAt(file *File, pos int, ruleName string) bool {
 	line := file.Line(pos)
 	if line == 0 {
 		return false

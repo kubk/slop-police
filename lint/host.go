@@ -45,7 +45,7 @@ type host struct {
 
 	rules   []EnabledRule
 	plugins map[string]int // indexes of the enabled plugin rules by name
-	ctx     *Context       // nil when no rule is enabled
+	ctx     *Context
 	perRule [][]Finding
 	done    chan struct{} // closed once the built-in rules are done
 	started time.Time     // when the launcher started running plugin rules
@@ -112,7 +112,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 	}
 	config, err := LoadConfig(session.GetCurrentDirectory(), pluginRules)
 	var ctx *Context
-	if err == nil && len(config.Rules) > 0 {
+	if err == nil {
 		ctx, err = newContext(session, config, h.timing)
 	}
 	if err != nil {
@@ -122,9 +122,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 	h.rules, h.ctx, h.done, h.started = config.Rules, ctx, make(chan struct{}), time.Now()
 	go func() {
 		defer close(h.done)
-		if ctx != nil {
-			h.perRule = runRules(ctx, config.Rules)
-		}
+		h.perRule = runRules(ctx, config.Rules)
 	}()
 
 	result := &startResult{}
@@ -135,10 +133,8 @@ func (h *host) start(params *startParams) (*startResult, error) {
 			result.Rules = append(result.Rules, startRule{enabled.Rule.Name, enabled.Options})
 		}
 	}
-	if ctx != nil {
-		for _, f := range ctx.Files {
-			result.Files = append(result.Files, startFile{f.Source.FileName(), f.RelPath, f.IsTest, f.Project.ConfigPath})
-		}
+	for _, f := range ctx.Files {
+		result.Files = append(result.Files, startFile{f.Source.FileName(), f.RelPath, f.IsTest, f.Project.ConfigPath})
 	}
 	return result, nil
 }

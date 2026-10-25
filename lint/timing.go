@@ -7,22 +7,27 @@ import (
 	"time"
 )
 
-// Timing prints phase durations to stderr when SLOP_POLICE_TIMING=1.
+// Timing prints phase durations to stderr when SLOP_POLICE_TIMING=1. A nil
+// Timing prints nothing.
 type Timing struct {
-	out   io.Writer // nil when disabled
+	out   io.Writer
 	start time.Time
 	last  time.Time
 	mu    sync.Mutex
 }
 
+// NewTiming returns a Timing that prints to out, or nil when out is nil.
 func NewTiming(out io.Writer) *Timing {
+	if out == nil {
+		return nil
+	}
 	now := time.Now()
 	return &Timing{out: out, start: now, last: now}
 }
 
 // Mark prints the time since the previous mark.
 func (t *Timing) Mark(name string) {
-	if t == nil || t.out == nil {
+	if t == nil {
 		return
 	}
 	t.mu.Lock()
@@ -34,7 +39,7 @@ func (t *Timing) Mark(name string) {
 
 // Span prints a duration measured by the caller.
 func (t *Timing) Span(name string, d time.Duration) {
-	if t == nil || t.out == nil {
+	if t == nil {
 		return
 	}
 	t.mu.Lock()

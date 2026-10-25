@@ -7,10 +7,9 @@ import (
 
 // no-stringified-unknown-error reports `e instanceof Error ? e.message :
 // String(e)` (either branch order), which flattens a caught value into a
-// string and drops its type, stack and cause. Matching follows slop-scan's
-// defensive.stringified-unknown-errors: a plain instanceof check only counts
-// for the usual error variable names, while an `||` of instanceof checks
-// allows any identifiers on their left sides.
+// string and drops its type, stack and cause. A plain instanceof check only
+// counts for the usual error variable names, while an `||` of instanceof
+// checks allows any identifiers on their left sides.
 func init() {
 	lint.Register(&lint.Rule{
 		Name: "no-stringified-unknown-error",

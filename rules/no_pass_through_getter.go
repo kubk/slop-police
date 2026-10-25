@@ -37,12 +37,8 @@ func passThroughGetterTarget(node *ast.Node) *ast.Node {
 	}
 	expression := unwrapParentheses(statement.AsReturnStatement().Expression)
 	switch expression.Kind {
-	case ast.KindPropertyAccessExpression:
-		if expression.AsPropertyAccessExpression().Expression.Kind == ast.KindThisKeyword {
-			return expression
-		}
-	case ast.KindElementAccessExpression:
-		if expression.AsElementAccessExpression().Expression.Kind == ast.KindThisKeyword {
+	case ast.KindPropertyAccessExpression, ast.KindElementAccessExpression:
+		if expression.Expression().Kind == ast.KindThisKeyword {
 			return expression
 		}
 	}

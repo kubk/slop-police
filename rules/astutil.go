@@ -2,11 +2,12 @@ package rules
 
 import (
 	"github.com/microsoft/typescript-go/internal/ast"
+	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/internal/tspath"
 )
 
-// Visit walks node and its descendants in forEachChild order (pre-order).
-func Visit(root *ast.Node, fn func(node *ast.Node)) {
+// forEachNode walks root and its descendants in forEachChild order (pre-order).
+func forEachNode(root *ast.Node, fn func(node *ast.Node)) {
 	var visit func(node *ast.Node) bool
 	visit = func(node *ast.Node) bool {
 		fn(node)
@@ -16,7 +17,18 @@ func Visit(root *ast.Node, fn func(node *ast.Node)) {
 	visit(root)
 }
 
-// staticName mirrors ast.mjs getStaticName.
+// resolveSymbol is getSymbolAtLocation, followed by getAliasedSymbol for an
+// alias symbol.
+func resolveSymbol(ch *checker.Checker, node *ast.Node) *ast.Symbol {
+	symbol := ch.GetSymbolAtLocation(node)
+	if symbol != nil && symbol.Flags&ast.SymbolFlagsAlias != 0 {
+		symbol = ch.GetAliasedSymbol(symbol)
+	}
+	return symbol
+}
+
+// staticName returns the text of a name that is known without evaluating
+// it: an identifier, string, number or template without substitutions.
 func staticName(name *ast.Node) (string, bool) {
 	if name == nil {
 		return "", false
@@ -36,7 +48,7 @@ func unwrapParentheses(node *ast.Node) *ast.Node {
 }
 
 // unwrapExpression strips parentheses, `as`, `satisfies` and non-null
-// assertions, like slop-scan's unwrapExpression.
+// assertions.
 func unwrapExpression(node *ast.Node) *ast.Node {
 	for {
 		switch node.Kind {
@@ -78,7 +90,8 @@ func pathOf(node *ast.Node) tspath.Path {
 	return ast.GetSourceFileOfNode(node).Path()
 }
 
-// declKey mirrors context.declarationKey: `${path}:${node.pos}`.
+// declKey identifies a declaration across parses of its file: its file's
+// path and position.
 type declKey struct {
 	path tspath.Path
 	pos  int
