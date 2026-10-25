@@ -4,8 +4,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.webp">
-    <img src="assets/readme-light.webp" alt="slop-police flags an export only used in its own file, a function that just forwards, a variable that is just a rename, and a method that is never called">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.webp?v=2">
+    <img src="assets/readme-light.webp?v=2" alt="slop-police flags an export only used in its own file, a function that just forwards, a variable that is just a rename, and a method that is never called">
   </picture>
 </p>
 
