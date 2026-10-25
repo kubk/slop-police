@@ -17,7 +17,7 @@ npm i -D slop-police
 
 Add a [`slop-police.json`](#configuration) and run `npx slop-police` (or `pnpm exec slop-police`).
 
-## Instead of knip and jscpd
+## Comparison with other tools
 
 |                                            | slop-police | knip | jscpd |
 | ------------------------------------------ | :---------: | :--: | :---: |
@@ -45,7 +45,6 @@ Put a `slop-police.json` in the directory you run it from:
 ```json
 {
   "projects": ["packages/api/tsconfig.json", "packages/frontend/tsconfig.app.json"],
-  "ignore": ["**/.next/**"],
   "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"]
 }
 ```
