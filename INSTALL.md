@@ -18,7 +18,11 @@ Put one config at the repository root, even in a monorepo: usages are counted ac
 
 ```json
 {
-  "projects": ["packages/api/tsconfig.json", "packages/web/tsconfig.app.json", "packages/web/tsconfig.node.json"],
+  "projects": [
+    "packages/api/tsconfig.json",
+    "packages/web/tsconfig.app.json",
+    "packages/web/tsconfig.node.json"
+  ],
   "ignore": ["**/routeTree.gen.ts", "packages/web/src/components/ui/**"],
   "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
   "rules": {

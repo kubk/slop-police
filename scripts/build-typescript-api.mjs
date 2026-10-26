@@ -5,71 +5,104 @@
 // module's tsgo (a tool in go.mod).
 //
 //   node scripts/build-typescript-api.mjs
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(import.meta.dirname, '..')
 
-export function buildTypeScriptApi(dest = path.join(root, "npm/slop-police/lib/typescript")) {
-  const go = (...args) => execFileSync("go", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
-  const module = JSON.parse(go("mod", "download", "-json", "github.com/microsoft/typescript-go"));
-  const pkg = path.join(module.Dir, "_packages/native-preview");
+export function buildTypeScriptApi(dest = path.join(root, 'npm/slop-police/lib/typescript')) {
+  const go = (...args) =>
+    execFileSync('go', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
+  const module = JSON.parse(go('mod', 'download', '-json', 'github.com/microsoft/typescript-go'))
+  const pkg = path.join(module.Dir, '_packages/native-preview')
 
-  fs.rmSync(dest, { recursive: true, force: true });
+  fs.rmSync(dest, { recursive: true, force: true })
   // Without type checking, which would need @types/node: the sources
   // declare their types explicitly (isolatedDeclarations). Their classes
   // implement Symbol.dispose, which declarations only get right with the
   // lib that declares it.
-  const { lib } = JSON.parse(fs.readFileSync(path.join(pkg, "tsconfig.base.json"), "utf8")).compilerOptions;
+  const { lib } = JSON.parse(
+    fs.readFileSync(path.join(pkg, 'tsconfig.base.json'), 'utf8'),
+  ).compilerOptions
   go(
-    "tool", "tsgo", "-p", path.join(pkg, "tsconfig.json"), "--outDir", path.join(dest, "dist"),
-    "--noCheck", "--types", "", "--lib", [...lib, "esnext.disposable"].join(","),
-    "--composite", "false", "--sourceMap", "false", "--declarationMap", "false",
-  );
+    'tool',
+    'tsgo',
+    '-p',
+    path.join(pkg, 'tsconfig.json'),
+    '--outDir',
+    path.join(dest, 'dist'),
+    '--noCheck',
+    '--types',
+    '',
+    '--lib',
+    [...lib, 'esnext.disposable'].join(','),
+    '--composite',
+    'false',
+    '--sourceMap',
+    'false',
+    '--declarationMap',
+    'false',
+  )
   // The async client (and the JSON-RPC library it needs) isn't used.
-  fs.rmSync(path.join(dest, "dist/api/async"), { recursive: true });
-  for (const file of ["lib/getExePath.js", "lib/getExePath.d.ts"]) {
-    fs.cpSync(path.join(pkg, file), path.join(dest, file));
+  fs.rmSync(path.join(dest, 'dist/api/async'), { recursive: true })
+  for (const file of ['lib/getExePath.js', 'lib/getExePath.d.ts']) {
+    fs.cpSync(path.join(pkg, file), path.join(dest, file))
   }
-  for (const file of ["LICENSE", "NOTICE.txt"]) {
-    fs.cpSync(path.join(module.Dir, file), path.join(dest, file));
+  for (const file of ['LICENSE', 'NOTICE.txt']) {
+    fs.cpSync(path.join(module.Dir, file), path.join(dest, file))
   }
 
-  const { "#vscode-jsonrpc/node": _, ...imports } = JSON.parse(fs.readFileSync(path.join(pkg, "package.json"), "utf8")).imports;
+  const { '#vscode-jsonrpc/node': _, ...imports } = JSON.parse(
+    fs.readFileSync(path.join(pkg, 'package.json'), 'utf8'),
+  ).imports
   // The @typescript/source condition maps to the TypeScript sources.
-  const compiled = JSON.parse(JSON.stringify(imports), (key, value) => (key === "@typescript/source" ? undefined : value));
-  fs.writeFileSync(path.join(dest, "package.json"), `${JSON.stringify({ type: "module", imports: compiled }, null, 2)}\n`);
+  const compiled = JSON.parse(JSON.stringify(imports), (key, value) =>
+    key === '@typescript/source' ? undefined : value,
+  )
+  fs.writeFileSync(
+    path.join(dest, 'package.json'),
+    `${JSON.stringify({ type: 'module', imports: compiled }, null, 2)}\n`,
+  )
 
-  const declarations = ["ast.generated.d.ts", "ast.d.ts"].map((file) => fs.readFileSync(path.join(dest, "dist/ast", file), "utf8"));
-  fs.writeFileSync(path.join(dest, "nodes-by-kind.d.ts"), nodesByKind(declarations.join("\n"), module.Version));
+  const declarations = ['ast.generated.d.ts', 'ast.d.ts'].map((file) =>
+    fs.readFileSync(path.join(dest, 'dist/ast', file), 'utf8'),
+  )
+  fs.writeFileSync(
+    path.join(dest, 'nodes-by-kind.d.ts'),
+    nodesByKind(declarations.join('\n'), module.Version),
+  )
 }
 
 // Maps SyntaxKind names to the node interfaces declared with that kind, so
 // visitor handlers get the node type of the kind they are keyed by.
 function nodesByKind(declarations, version) {
-  const interfaces = new Map();
-  for (const [, name, body] of declarations.matchAll(/^export interface (\w+)\b[^{\n]*\{\n([\s\S]*?)^\}/gm)) {
-    const kind = /^\s+readonly kind: SyntaxKind\.(\w+);$/m.exec(body)?.[1];
-    if (kind) interfaces.set(kind, [...(interfaces.get(kind) ?? []), name]);
+  const interfaces = new Map()
+  for (const [, name, body] of declarations.matchAll(
+    /^export interface (\w+)\b[^{\n]*\{\n([\s\S]*?)^\}/gm,
+  )) {
+    const kind = /^\s+readonly kind: SyntaxKind\.(\w+);$/m.exec(body)?.[1]
+    if (kind) interfaces.set(kind, [...(interfaces.get(kind) ?? []), name])
   }
   // A changed declaration format would silently type every node as Node.
-  if (interfaces.size < 150 || !interfaces.has("CallExpression")) {
-    throw new Error(`Found node interfaces for only ${interfaces.size} kinds in typescript-go ${version}`);
+  if (interfaces.size < 150 || !interfaces.has('CallExpression')) {
+    throw new Error(
+      `Found node interfaces for only ${interfaces.size} kinds in typescript-go ${version}`,
+    )
   }
-  const names = [...new Set([...interfaces.values()].flat())].sort();
-  const entries = [...interfaces].map(([kind, types]) => `  ${kind}: ${types.join(" | ")};`);
+  const names = [...new Set([...interfaces.values()].flat())].sort()
+  const entries = [...interfaces].map(([kind, types]) => `  ${kind}: ${types.join(' | ')};`)
   return [
     `// Generated by scripts/build-typescript-api.mjs from typescript-go ${version}.`,
-    `import type { ${names.join(", ")} } from "./dist/ast/index.js";`,
-    "",
-    "export interface NodesByKind {",
+    `import type { ${names.join(', ')} } from "./dist/ast/index.js";`,
+    '',
+    'export interface NodesByKind {',
     ...entries,
-    "}",
-    "",
-  ].join("\n");
+    '}',
+    '',
+  ].join('\n')
 }
 
 if (import.meta.main) {
-  buildTypeScriptApi();
+  buildTypeScriptApi()
 }

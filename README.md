@@ -26,19 +26,6 @@ Install and configure slop-police by following https://raw.githubusercontent.com
 
 Let your agent properly set it up so slop-police finds every real issue it can. For manual installation run `npm i -D slop-police`, add a [`slop-police.json`](#configuration) and run `npx slop-police`
 
-## Comparison with other tools
-
-|                                            | slop-police | knip | jscpd |
-| ------------------------------------------ | :---------: | :--: | :---: |
-| Unused exports and files                   |      ✓      |  ✓   |       |
-| Unused enum members                        |      ✓      |  ✓   |       |
-| Unused class methods                       |      ✓      |      |       |
-| Unused object keys                         |      ✓      |      |       |
-| Copy-pasted code                           |      ✓      |      |   ✓   |
-| Helpers rewritten instead of reused        |      ✓      |      |       |
-| Pass-through wrappers, getters and aliases |      ✓      |      |       |
-| Flattened errors                           |      ✓      |      |       |
-
 ## Rules
 
 ### no-pass-through-wrapper
@@ -47,7 +34,7 @@ A function or method that only returns a call to another function.
 
 ```ts
 function loadUser(id: string) {
-  return api.loadUser(id);
+  return api.loadUser(id)
 }
 ```
 
@@ -56,8 +43,8 @@ function loadUser(id: string) {
 A type alias that only renames another type.
 
 ```ts
-type User = { id: string };
-type Member = User;
+type User = { id: string }
+type Member = User
 ```
 
 ### no-duplicate-code
@@ -67,23 +54,23 @@ Copy-pasted blocks of code. Options: `minLines` (default `11`) and `minTokens` (
 ```ts
 // stripe-webhook.ts
 const mailer = await Mailer.connect({
-  host: "smtp.example.com",
+  host: 'smtp.example.com',
   port: 465,
   secure: true,
   user: env.SMTP_USER,
   password: env.SMTP_PASSWORD,
-});
-await mailer.send({ to: customer.email, subject: "Your license" });
+})
+await mailer.send({ to: customer.email, subject: 'Your license' })
 
 // reset-password.ts
 const mailer = await Mailer.connect({
-  host: "smtp.example.com",
+  host: 'smtp.example.com',
   port: 465,
   secure: true,
   user: env.SMTP_USER,
   password: env.SMTP_PASSWORD,
-});
-await mailer.send({ to: user.email, subject: "Reset your password" });
+})
+await mailer.send({ to: user.email, subject: 'Reset your password' })
 ```
 
 ### no-duplicate-function
@@ -93,23 +80,23 @@ The same function written again in several files, with different variable names.
 ```ts
 // users.ts
 export async function loadUsers(id: string) {
-  const response = await fetchJson("/users/" + id);
-  if (!response.ok) throw new Error("failed to load users");
-  return response.data;
+  const response = await fetchJson('/users/' + id)
+  if (!response.ok) throw new Error('failed to load users')
+  return response.data
 }
 
 // posts.ts
 export async function loadPosts(postId: string) {
-  const res = await fetchJson("/posts/" + postId);
-  if (!res.ok) throw new Error("failed to load posts");
-  return res.data;
+  const res = await fetchJson('/posts/' + postId)
+  if (!res.ok) throw new Error('failed to load posts')
+  return res.data
 }
 
 // teams.ts
 export async function loadTeams(teamId: string) {
-  const result = await fetchJson("/teams/" + teamId);
-  if (!result.ok) throw new Error("failed to load teams");
-  return result.data;
+  const result = await fetchJson('/teams/' + teamId)
+  if (!result.ok) throw new Error('failed to load teams')
+  return result.data
 }
 ```
 
@@ -119,8 +106,10 @@ A getter that only returns another property.
 
 ```ts
 class Store {
-  private items: Item[] = [];
-  get list() { return this.items; }
+  private items: Item[] = []
+  get list() {
+    return this.items
+  }
 }
 ```
 
@@ -130,9 +119,9 @@ A variable that only renames another variable.
 
 ```ts
 function render() {
-  const user = getUser();
-  const current = user;
-  return current.name;
+  const user = getUser()
+  const current = user
+  return current.name
 }
 ```
 
@@ -141,7 +130,7 @@ function render() {
 `cn()` with a single class string.
 
 ```tsx
-<div className={cn("flex gap-2")} />
+<div className={cn('flex gap-2')} />
 ```
 
 ### no-stringified-unknown-error
@@ -150,9 +139,9 @@ Turning a caught error into a string with `error instanceof Error ? error.messag
 
 ```ts
 try {
-  await sendMessage(chatId, text);
+  await sendMessage(chatId, text)
 } catch (error) {
-  return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 ```
 
@@ -162,10 +151,10 @@ Object keys that are never read.
 
 ```ts
 export const links = {
-  docs: "https://example.com/docs",
-  legacy: "https://example.com/old", // links.legacy is never read
-};
-open(links.docs);
+  docs: 'https://example.com/docs',
+  legacy: 'https://example.com/old', // links.legacy is never read
+}
+open(links.docs)
 ```
 
 An index with a literal type reads only the keys in that type, so `labels[status]` with `status: "active" | "expired"` leaves a `trial` key unused. An index typed as `string` or `any`, or an object passed elsewhere, could read any key, so the object is skipped.
@@ -179,7 +168,7 @@ enum Status {
   Active,
   Archived, // Enum member Status.Archived is never used
 }
-const isActive = (status: Status) => status === Status.Active;
+const isActive = (status: Status) => status === Status.Active
 ```
 
 ### unused-exports
@@ -188,12 +177,12 @@ Exports that nothing imports, or that are only used in their own file.
 
 ```ts
 // lib.ts
-export type Options = { strict: boolean }; // Export Options is only used in its own file
+export type Options = { strict: boolean } // Export Options is only used in its own file
 export function parse(text: string, options?: Options) {}
 export function format() {} // Export format is never used
 
 // main.ts
-import { parse } from "./lib";
+import { parse } from './lib'
 ```
 
 If you want to be extra strict, list your entry points in the `entry` option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
@@ -211,7 +200,7 @@ class Store {
   load() {}
   reset() {}
 }
-new Store().load();
+new Store().load()
 ```
 
 ## Configuration
@@ -258,35 +247,37 @@ A plugin exports rules made with `defineRule`, by default or by name. `visit` ha
 
 ```ts
 // slop-rules.ts
-import { defineRule, isIdentifier, SyntaxKind } from "slop-police";
+import { defineRule, isIdentifier, SyntaxKind } from 'slop-police'
 
 export const noDirectFetch = defineRule({
-  name: "no-direct-fetch",
+  name: 'no-direct-fetch',
   // Option defaults. The config's options must have the same types.
-  options: { allowIn: "" },
+  options: { allowIn: '' },
   visit: {
     CallExpression(node, ctx) {
-      if (ctx.options.allowIn && ctx.file.path.startsWith(ctx.options.allowIn)) return;
-      if (isIdentifier(node.expression) && node.expression.text === "fetch") {
-        ctx.report(node.expression, "Use the API client instead of fetch()");
+      if (ctx.options.allowIn && ctx.file.path.startsWith(ctx.options.allowIn)) return
+      if (isIdentifier(node.expression) && node.expression.text === 'fetch') {
+        ctx.report(node.expression, 'Use the API client instead of fetch()')
       }
     },
   },
-});
+})
 
 export const noNeedlessNullishFallback = defineRule({
-  name: "no-needless-nullish-fallback",
+  name: 'no-needless-nullish-fallback',
   visit: {
     BinaryExpression(node, ctx) {
-      if (node.operatorToken.kind !== SyntaxKind.QuestionQuestionToken) return;
-      const { checker } = ctx;
-      const type = checker.getTypeAtLocation(node.left);
-      if (!type) return;
-      const nullable = [checker.getUndefinedType(), checker.getNullType()].some((t) => checker.isTypeAssignableTo(t, type));
-      if (!nullable) ctx.report(node.right, `${node.left.getText()} is never null or undefined`);
+      if (node.operatorToken.kind !== SyntaxKind.QuestionQuestionToken) return
+      const { checker } = ctx
+      const type = checker.getTypeAtLocation(node.left)
+      if (!type) return
+      const nullable = [checker.getUndefinedType(), checker.getNullType()].some((t) =>
+        checker.isTypeAssignableTo(t, type),
+      )
+      if (!nullable) ctx.report(node.right, `${node.left.getText()} is never null or undefined`)
     },
   },
-});
+})
 ```
 
 Nodes, `SyntaxKind`, the `is*` guards and the checker come from the TypeScript 7 API that slop-police runs on. The handler's `ctx` has:
@@ -299,37 +290,40 @@ Nodes, `SyntaxKind`, the `is*` guards and the checker come from the TypeScript 7
 For rules that compare files, `create(ctx)` returns the visitor instead, so its state lives in a closure, and `finish` runs after the last file:
 
 ```ts
-import { defineRule, type Node } from "slop-police";
+import { defineRule, type Node } from 'slop-police'
 
 export const noRepeatedUrl = defineRule({
-  name: "no-repeated-url",
+  name: 'no-repeated-url',
   create(ctx) {
-    const byUrl = new Map<string, Node[]>();
+    const byUrl = new Map<string, Node[]>()
     return {
       StringLiteral(node) {
-        if (node.text.startsWith("https://")) byUrl.set(node.text, [...(byUrl.get(node.text) ?? []), node]);
+        if (node.text.startsWith('https://'))
+          byUrl.set(node.text, [...(byUrl.get(node.text) ?? []), node])
       },
       finish() {
         for (const [url, nodes] of byUrl) {
-          if (nodes.length > 2) for (const node of nodes) ctx.report(node, `${url} is hard-coded in ${nodes.length} places`);
+          if (nodes.length > 2)
+            for (const node of nodes)
+              ctx.report(node, `${url} is hard-coded in ${nodes.length} places`)
         }
       },
-    };
+    }
   },
-});
+})
 ```
 
 Test rules with `lint` from `slop-police/testing`, which runs a rule alone on a source string (as `index.ts`) or on files (an object of paths to contents) in a strict TypeScript project:
 
 ```ts
-import { lint } from "slop-police/testing";
-import { noDirectFetch } from "./slop-rules.ts";
+import { lint } from 'slop-police/testing'
+import { noDirectFetch } from './slop-rules.ts'
 
-test("no-direct-fetch", () => {
+test('no-direct-fetch', () => {
   expect(lint(noDirectFetch, `fetch("/users");`)).toEqual([
-    { file: "index.ts", line: 1, column: 1, message: "Use the API client instead of fetch()" },
-  ]);
-});
+    { file: 'index.ts', line: 1, column: 1, message: 'Use the API client instead of fetch()' },
+  ])
+})
 ```
 
 Plugins work only through the npm launcher (`npx slop-police`).
@@ -345,8 +339,21 @@ class Store {
 }
 
 // slop-police-ignore
-export const legacyLinks = { a: "/a", b: "/b" };
+export const legacyLinks = { a: '/a', b: '/b' }
 ```
+
+## Comparison with other tools
+
+|                                            | slop-police | knip | jscpd |
+| ------------------------------------------ | :---------: | :--: | :---: |
+| Unused exports and files                   |      ✓      |  ✓   |       |
+| Unused enum members                        |      ✓      |  ✓   |       |
+| Unused class methods                       |      ✓      |      |       |
+| Unused object keys                         |      ✓      |      |       |
+| Copy-pasted code                           |      ✓      |      |   ✓   |
+| Helpers rewritten instead of reused        |      ✓      |      |       |
+| Pass-through wrappers, getters and aliases |      ✓      |      |       |
+| Flattened errors                           |      ✓      |      |       |
 
 ## Requirements
 

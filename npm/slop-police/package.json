@@ -3,12 +3,12 @@
   "version": "0.3.9",
   "description": "Type-aware TypeScript linter for the dead code and needless indirection AI agents leave behind",
   "keywords": [
-    "typescript",
+    "ai",
+    "dead-code",
     "lint",
     "linter",
-    "dead-code",
-    "unused",
-    "ai"
+    "typescript",
+    "unused"
   ],
   "license": "MIT",
   "author": "Egor Gorbachev",
@@ -16,10 +16,14 @@
     "type": "git",
     "url": "git+https://github.com/kubk/slop-police.git"
   },
-  "type": "module",
   "bin": {
     "slop-police": "bin/slop-police.js"
   },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -31,10 +35,6 @@
     },
     "./package.json": "./package.json"
   },
-  "files": [
-    "bin",
-    "lib"
-  ],
   "engines": {
     "node": ">=22.18"
   }
