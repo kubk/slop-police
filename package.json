@@ -5,6 +5,7 @@
     "format:check": "oxfmt --check"
   },
   "devDependencies": {
+    "lefthook": "2.2.2",
     "oxfmt": "0.74.0"
   },
   "packageManager": "pnpm@9.15.0"

@@ -1,0 +1,10 @@
+pre-commit:
+  commands:
+    oxfmt:
+      glob: '*.{js,mjs,ts,md,json}'
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    gofmt:
+      glob: '*.go'
+      run: gofmt -w {staged_files}
+      stage_fixed: true
