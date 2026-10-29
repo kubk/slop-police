@@ -18,7 +18,9 @@ const maxListedImports = 10
 // imported types, usages can't be linked to declarations, and rules would
 // report used code as unused. An import counts as resolved when it resolves
 // to a file or matches a `declare module`, like it does for tsc. Side-effect
-// imports (import "./styles.css") bring in no types, so they're skipped.
+// imports (import "./styles.css") bring in no types, so they're skipped, and
+// so are imports under a @ts-expect-error or @ts-ignore, whose author knows
+// they don't resolve (virtual modules, runtime-provided ones).
 func checkImports(ctx *Context) error {
 	type unresolved struct {
 		file   *File
@@ -46,7 +48,7 @@ func checkImports(ctx *Context) error {
 			if seen[name] || isSideEffectImport(module) || program.GetResolvedModuleFromModuleSpecifier(file.Source, module).IsResolved() {
 				continue
 			}
-			if matchesPattern(patterns, name) {
+			if matchesPattern(patterns, name) || hasPrecedingDirective(file, module) {
 				continue
 			}
 			seen[name] = true
@@ -71,6 +73,37 @@ func checkImports(ctx *Context) error {
 
 func isSideEffectImport(module *ast.Node) bool {
 	return module.Parent.Kind == ast.KindImportDeclaration && module.Parent.AsImportDeclaration().ImportClause == nil
+}
+
+// hasPrecedingDirective reports whether tsc would suppress an error at the
+// module specifier: a @ts-expect-error or @ts-ignore comment is on a line
+// above it, with only comments or blank lines in between.
+func hasPrecedingDirective(file *File, module *ast.Node) bool {
+	if len(file.Source.CommentDirectives) == 0 {
+		return false
+	}
+	directiveLines := map[int]bool{}
+	for _, directive := range file.Source.CommentDirectives {
+		directiveLines[file.Line(directive.Loc.Pos())] = true
+	}
+	text := file.Source.Text()
+	for line := file.Line(Start(module, file.Source)) - 1; line >= 0; line-- {
+		if directiveLines[line] {
+			return true
+		}
+		if !isCommentOrBlankLine(text, int(file.lineStarts[line])) {
+			return false
+		}
+	}
+	return false
+}
+
+func isCommentOrBlankLine(text string, pos int) bool {
+	for pos < len(text) && (text[pos] == ' ' || text[pos] == '\t') {
+		pos++
+	}
+	return pos == len(text) || text[pos] == '\r' || text[pos] == '\n' ||
+		pos+1 < len(text) && text[pos] == '/' && text[pos+1] == '/'
 }
 
 func matchesPattern(patterns []core.Pattern, name string) bool {

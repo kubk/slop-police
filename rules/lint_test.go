@@ -279,14 +279,30 @@ export const react = useState;
 		"other.ts": `import { useEffect } from "react";
 export const effect = useEffect;
 `,
+		"virtual.ts": `// @ts-expect-error -- resolved by the bundler
+import entry from "virtual:entry";
+// @ts-ignore
+// resolved by the runtime
+import * as workers from "cloudflare:workers";
+// @ts-expect-error
+export const used = entry;
+import { stage } from "virtual:stage";
+// @ts-expect-error
+import {
+  manifest,
+} from "virtual:manifest";
+export const all = [workers, stage, manifest];
+`,
 	})
 	_, err := lint.Lint(root, fixtureConfig(t, obj{"rules": obj{"unused-methods": "error"}}), nil)
-	want := `Cannot find 5 imported modules; install dependencies or fix the imports:
+	want := `Cannot find 7 imported modules; install dependencies or fix the imports:
   react  app.tsx:1:26
   ./missing  app.tsx:6:21
   lodash  app.tsx:7:15
   mobx  app.tsx:8:28
-  zod  app.tsx:9:34`
+  zod  app.tsx:9:34
+  virtual:stage  virtual.ts:8:23
+  virtual:manifest  virtual.ts:12:8`
 	if err == nil || err.Error() != want {
 		t.Errorf("got %v\nwant %s", err, want)
 	}
