@@ -79,6 +79,46 @@ new Upper().write("a");
 			want: []string{"Method Upper.from is never used", "Method Upper.unused is never used"},
 		},
 		{
+			name: "static members read through a library's constructor type",
+			files: map[string]string{
+				"react.d.ts": `
+declare namespace React {
+  class Component<P, S> {
+    props: P;
+    state: S;
+    render(): unknown;
+  }
+  class PureComponent<P, S> extends Component<P, S> {}
+  interface StaticLifecycle<P, S> {
+    getDerivedStateFromProps?: (props: P, state: S) => Partial<S> | null;
+  }
+  interface ComponentClass<P, S> extends StaticLifecycle<P, S> {
+    new (props: P): Component<P, S>;
+    displayName?: string;
+  }
+}
+export = React;
+`,
+				"counter.ts": `
+import { Component, PureComponent } from "./react";
+abstract class Base<P, S> extends Component<P, S> {}
+class Counter extends PureComponent<{ start: number }, { count: number }> {
+  static getDerivedStateFromProps(props: { start: number }) { return { count: props.start }; }
+  static get displayName() { return "Counter"; }
+  static unused() {}
+  render() { return this.state.count; }
+}
+class Label extends Base<{ text: string }, {}> {
+  static getDerivedStateFromProps() { return null; }
+  getDerivedStateFromProps() { return null; }
+  render() { return this.props.text; }
+}
+console.log(Counter, Label);
+`,
+			},
+			want: []string{"Method Counter.unused is never used", "Method Label.getDerivedStateFromProps is never used"},
+		},
+		{
 			name: "members used through an analyzed base class",
 			files: map[string]string{"shapes.ts": `
 abstract class Shape {

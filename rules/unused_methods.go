@@ -184,9 +184,10 @@ func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membe
 	}
 	var mu sync.Mutex
 	var external []memberKey
+	constructors := &constructorTypes{ctx: ctx, byClass: map[constructorTypesKey][]*checker.Type{}}
 	ctx.ForEachFile(files, func(file *lint.File, ch *checker.Checker) {
 		for class, classCandidates := range byFile[file] {
-			instance, static := inheritedProperties(ch, class)
+			instance, static := inheritedProperties(ch, class, constructors)
 			for _, c := range classCandidates {
 				properties := instance
 				if c.key.static {
@@ -212,8 +213,9 @@ func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membe
 
 // inheritedProperties returns, by name, the instance properties of the
 // class's implemented interfaces and extended class, and the static
-// properties of its extended class.
-func inheritedProperties(ch *checker.Checker, class *ast.Node) (instance, static map[string][]*ast.Symbol) {
+// properties of its extended class and of the library's constructor types
+// for the classes it extends.
+func inheritedProperties(ch *checker.Checker, class *ast.Node, constructors *constructorTypes) (instance, static map[string][]*ast.Symbol) {
 	instance, static = map[string][]*ast.Symbol{}, map[string][]*ast.Symbol{}
 	add := func(properties map[string][]*ast.Symbol, t *checker.Type) {
 		if t == nil {
@@ -230,10 +232,87 @@ func inheritedProperties(ch *checker.Checker, class *ast.Node) (instance, static
 			add(instance, ch.GetTypeAtLocation(typeNode))
 			if clause.AsHeritageClause().Token == ast.KindExtendsKeyword {
 				add(static, ch.GetTypeAtLocation(typeNode.AsExpressionWithTypeArguments().Expression))
+				for _, t := range constructors.ofAncestors(ch, ch.GetTypeAtLocation(typeNode)) {
+					add(static, t)
+				}
 			}
 		}
 	}
 	return instance, static
+}
+
+// constructorTypes finds, for classes declared outside the analyzed files,
+// the types their library declares for subclass constructors: interfaces and
+// type aliases in the class's file with a construct signature returning the
+// class, like React's ComponentClass for Component. Their properties are the
+// static members the library reads from subclasses, such as
+// getDerivedStateFromProps. It's safe for concurrent use.
+type constructorTypes struct {
+	ctx     *lint.Context
+	mu      sync.Mutex
+	byClass map[constructorTypesKey][]*checker.Type
+}
+
+// constructorTypesKey is per checker: types belong to the checker that
+// created them.
+type constructorTypesKey struct {
+	ch    *checker.Checker
+	class *ast.Symbol
+}
+
+// ofAncestors returns the constructor types of base, a class instance type,
+// and of the classes it extends.
+func (c *constructorTypes) ofAncestors(ch *checker.Checker, base *checker.Type) []*checker.Type {
+	var types []*checker.Type
+	visited := map[*ast.Symbol]bool{}
+	var visit func(t *checker.Type)
+	visit = func(t *checker.Type) {
+		symbol := t.Symbol()
+		if symbol == nil || symbol.Flags&ast.SymbolFlagsClass == 0 || visited[symbol] {
+			return
+		}
+		visited[symbol] = true
+		types = append(types, c.of(ch, symbol)...)
+		for _, baseType := range ch.GetBaseTypes(ch.GetDeclaredTypeOfSymbol(symbol)) {
+			visit(baseType)
+		}
+	}
+	visit(base)
+	return types
+}
+
+func (c *constructorTypes) of(ch *checker.Checker, class *ast.Symbol) []*checker.Type {
+	key := constructorTypesKey{ch, class}
+	c.mu.Lock()
+	types, ok := c.byClass[key]
+	c.mu.Unlock()
+	if ok {
+		return types
+	}
+	files := map[*ast.SourceFile]bool{}
+	for _, declaration := range class.Declarations {
+		if !c.ctx.IsAnalyzedPath(pathOf(declaration)) {
+			files[ast.GetSourceFileOfNode(declaration)] = true
+		}
+	}
+	for file := range files {
+		forEachNode(file.AsNode(), func(node *ast.Node) {
+			if node.Kind != ast.KindInterfaceDeclaration && node.Kind != ast.KindTypeAliasDeclaration {
+				return
+			}
+			t := ch.GetDeclaredTypeOfSymbol(node.Symbol())
+			for _, signature := range ch.GetSignaturesOfType(t, checker.SignatureKindConstruct) {
+				if ch.GetReturnTypeOfSignature(signature).Symbol() == class {
+					types = append(types, t)
+					break
+				}
+			}
+		})
+	}
+	c.mu.Lock()
+	c.byClass[key] = types
+	c.mu.Unlock()
+	return types
 }
 
 func implementedTypes(class *ast.Node) []*ast.Node {
