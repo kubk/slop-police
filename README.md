@@ -3,16 +3,17 @@
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=4">
     <img src="assets/logo-light.webp?v=4" width="1000" alt="slop-police: Stop LLM crimes in your codebase">
   </picture>
-  <br>
-  <a href="https://github.com/kubk/slop-police/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/kubk/slop-police/ci.yml?branch=main&label=tests" alt="Tests"></a>
-  <a href="https://www.npmjs.com/package/slop-police"><img src="https://img.shields.io/npm/dw/slop-police" alt="npm weekly downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/kubk/slop-police" alt="MIT license"></a>
+  <p>
+    <a href="https://github.com/kubk/slop-police/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/kubk/slop-police/ci.yml?branch=main&label=tests" alt="Tests"></a>
+    <a href="https://www.npmjs.com/package/slop-police"><img src="https://img.shields.io/npm/dw/slop-police" alt="npm weekly downloads"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/kubk/slop-police" alt="MIT license"></a>
+  </p>
 </h1>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.webp?v=4">
-    <img src="assets/readme-light.webp?v=4" width="1080" alt="slop-police flags a function that just forwards, a variable that is just a rename, and a method that is never called">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.webp?v=5">
+    <img src="assets/readme-light.webp?v=5" width="1080" alt="slop-police flags a function that just forwards, a variable that is just a rename, and a method that is never called">
   </picture>
 </p>
 
