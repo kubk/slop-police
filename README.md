@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=3">
-    <img src="assets/logo-light.webp?v=3" width="1000" alt="slop-police: Stop LLM crimes in your codebase">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.webp?v=4">
+    <img src="assets/logo-light.webp?v=4" width="1000" alt="slop-police: Stop LLM crimes in your codebase">
   </picture>
   <br>
   <a href="https://github.com/kubk/slop-police/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/kubk/slop-police/ci.yml?branch=main&label=tests" alt="Tests"></a>
