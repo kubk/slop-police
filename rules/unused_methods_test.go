@@ -56,6 +56,50 @@ mount(new MemoryFileSystem());
 			want: []string{"Method MemoryFileSystem.unused is never used"},
 		},
 		{
+			name: "members overriding a library base class",
+			files: map[string]string{
+				"library.d.ts": `
+export declare class Stream {
+  write(chunk: string): void;
+  protected _write(chunk: string): void;
+  static from(chunks: string[]): Stream;
+}
+`,
+				"stream.ts": `
+import { Stream } from "./library";
+class Upper extends Stream {
+  _write(chunk: string) { console.log(chunk.toUpperCase()); }
+  static from(chunks: string[]) { return new Upper(); }
+  from() {}
+  unused() {}
+}
+new Upper().write("a");
+`,
+			},
+			want: []string{"Method Upper.from is never used", "Method Upper.unused is never used"},
+		},
+		{
+			name: "members used through an analyzed base class",
+			files: map[string]string{"shapes.ts": `
+abstract class Shape {
+  abstract area(): number;
+  describe() { return "shape"; }
+}
+
+class Square extends Shape {
+  area() { return 4; }
+  describe() { return "square"; }
+}
+
+function measure(shape: Shape) {
+  return shape.area();
+}
+
+measure(new Square());
+`},
+			want: []string{"Method Shape.describe is never used", "Method Square.describe is never used"},
+		},
+		{
 			name:  "private and protected skipped by default",
 			files: hiddenMembers,
 		},

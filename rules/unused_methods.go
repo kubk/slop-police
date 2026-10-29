@@ -15,7 +15,9 @@ import (
 // unused-methods reports class methods and accessors (with a body) that are
 // never referenced. A member counts as used when:
 //   - some identifier or string literal with its name resolves to it (or to
-//     a member of an interface the class implements),
+//     a member it implements or overrides),
+//   - it implements or overrides a member declared outside the analyzed
+//     files, like a library's base class method that the library calls,
 //   - it is named in Pick<Class, "name">,
 //   - an instance is passed to a JSX attribute whose (structural) contextual
 //     type has a property with its name,
@@ -28,11 +30,13 @@ func init() {
 	})
 }
 
-// memberKey identifies a class member by its class's position and its name.
+// memberKey identifies a class member by its class's position, its name and
+// whether it's static.
 type memberKey struct {
 	path       tspath.Path
 	classStart int
 	name       string
+	static     bool
 }
 
 type methodCandidate struct {
@@ -54,7 +58,7 @@ func newUsage(candidates []*methodCandidate) *usage {
 	for _, c := range candidates {
 		if _, ok := u.index[c.key]; !ok {
 			u.index[c.key] = len(u.index)
-			class := memberKey{c.key.path, c.key.classStart, ""}
+			class := memberKey{path: c.key.path, classStart: c.key.classStart}
 			u.byClass[class] = append(u.byClass[class], u.index[c.key])
 		}
 	}
@@ -90,14 +94,15 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 	}
 
 	// Declarations whose references mark candidates used: the candidates
-	// themselves, plus members of the interfaces their classes implement.
+	// themselves, plus the interface and base class members they implement
+	// or override.
 	membersByDeclaration := map[declKey][]memberKey{}
 	names := map[string]bool{}
 	for _, c := range candidates {
 		membersByDeclaration[keyOfDeclaration(c.node)] = []memberKey{c.key}
 		names[c.key.name] = true
 	}
-	external := addImplementedInterfaceMembers(ctx, candidates, membersByDeclaration)
+	external := addInheritedMembers(ctx, candidates, membersByDeclaration)
 	phase("candidates and interfaces")
 
 	used := newUsage(candidates)
@@ -147,24 +152,28 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 		}
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier {
-				candidates = append(candidates, &methodCandidate{file, node, classMemberKey(node.Parent, node.Name().Text())})
+				key := classMemberKey(node.Parent, node.Name().Text())
+				key.static = hasModifier(node, ast.KindStaticKeyword)
+				candidates = append(candidates, &methodCandidate{file, node, key})
 			}
 		})
 	}
 	return candidates
 }
 
-// addImplementedInterfaceMembers maps members of implemented interfaces
-// (as the class file's checker sees them) to the candidates with their names.
-// It returns the candidates that implement a member declared outside the
-// analyzed files, such as a library's interface: the library calls them, and
-// its code isn't searched for references.
-func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
+// addInheritedMembers maps the members a class implements or overrides (as
+// the class file's checker sees them) to the candidates with their names:
+// members of implemented interfaces and of the extended class, whose static
+// side has the static ones. It returns the candidates that implement or
+// override a member declared outside the analyzed files, such as a library's
+// interface or base class: the library calls them, and its code isn't
+// searched for references.
+func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
 	byFile := map[*lint.File]map[*ast.Node][]*methodCandidate{} // by class
 	var files []*lint.File
 	for _, c := range candidates {
 		class := c.node.Parent
-		if len(implementedTypes(class)) == 0 {
+		if len(nodeList(class.ClassLikeData().HeritageClauses)) == 0 {
 			continue
 		}
 		if byFile[c.file] == nil {
@@ -177,17 +186,14 @@ func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandi
 	var external []memberKey
 	ctx.ForEachFile(files, func(file *lint.File, ch *checker.Checker) {
 		for class, classCandidates := range byFile[file] {
-			for _, typeNode := range implementedTypes(class) {
-				properties := map[string]*ast.Symbol{}
-				for _, property := range ch.GetPropertiesOfType(ch.GetTypeAtLocation(typeNode)) {
-					properties[property.Name] = property
+			instance, static := inheritedProperties(ch, class)
+			for _, c := range classCandidates {
+				properties := instance
+				if c.key.static {
+					properties = static
 				}
-				for _, c := range classCandidates {
-					property := properties[c.key.name]
-					if property == nil {
-						continue
-					}
-					mu.Lock()
+				mu.Lock()
+				for _, property := range properties[c.key.name] {
 					for _, declaration := range property.Declarations {
 						if ctx.IsAnalyzedPath(pathOf(declaration)) {
 							key := keyOfDeclaration(declaration)
@@ -196,12 +202,38 @@ func addImplementedInterfaceMembers(ctx *lint.Context, candidates []*methodCandi
 							external = append(external, c.key)
 						}
 					}
-					mu.Unlock()
 				}
+				mu.Unlock()
 			}
 		}
 	})
 	return external
+}
+
+// inheritedProperties returns, by name, the instance properties of the
+// class's implemented interfaces and extended class, and the static
+// properties of its extended class.
+func inheritedProperties(ch *checker.Checker, class *ast.Node) (instance, static map[string][]*ast.Symbol) {
+	instance, static = map[string][]*ast.Symbol{}, map[string][]*ast.Symbol{}
+	add := func(properties map[string][]*ast.Symbol, t *checker.Type) {
+		if t == nil {
+			return
+		}
+		for _, property := range ch.GetPropertiesOfType(t) {
+			properties[property.Name] = append(properties[property.Name], property)
+		}
+	}
+	for _, clause := range nodeList(class.ClassLikeData().HeritageClauses) {
+		for _, typeNode := range nodeList(clause.AsHeritageClause().Types) {
+			// In an extends clause, the type of the node is the base class's
+			// instance type, and the type of its expression the constructor's.
+			add(instance, ch.GetTypeAtLocation(typeNode))
+			if clause.AsHeritageClause().Token == ast.KindExtendsKeyword {
+				add(static, ch.GetTypeAtLocation(typeNode.AsExpressionWithTypeArguments().Expression))
+			}
+		}
+	}
+	return instance, static
 }
 
 func implementedTypes(class *ast.Node) []*ast.Node {
@@ -277,7 +309,7 @@ func collectContextuallyUsedJsxMembers(file *lint.File, ch *checker.Checker, use
 			required[property.Name] = true
 		}
 		for _, member := range class.Members() {
-			if isCheckedClassMember(member) && member.Name().Kind == ast.KindIdentifier && required[member.Name().Text()] {
+			if isCheckedClassMember(member) && !hasModifier(member, ast.KindStaticKeyword) && member.Name().Kind == ast.KindIdentifier && required[member.Name().Text()] {
 				used.add(classMemberKey(class, member.Name().Text()))
 			}
 		}
@@ -419,7 +451,7 @@ func classMemberKey(class *ast.Node, name string) memberKey {
 	if class.Name() != nil {
 		anchor = class.Name()
 	}
-	return memberKey{sf.Path(), lint.Start(anchor, sf), name}
+	return memberKey{path: sf.Path(), classStart: lint.Start(anchor, sf), name: name}
 }
 
 func isCheckedClassMember(node *ast.Node) bool {
