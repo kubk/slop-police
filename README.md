@@ -134,18 +134,6 @@ function render() {
 <div className={cn('flex gap-2')} />
 ```
 
-### no-stringified-unknown-error
-
-Turning a caught error into a string with `error instanceof Error ? error.message : String(error)`.
-
-```ts
-try {
-  await sendMessage(chatId, text)
-} catch (error) {
-  return { ok: false, error: error instanceof Error ? error.message : String(error) }
-}
-```
-
 ### unused-object-keys
 
 Object keys that are never read.
@@ -354,7 +342,6 @@ export const legacyLinks = { a: '/a', b: '/b' }
 | Copy-pasted code                           |      ✓      |      |   ✓   |
 | Helpers rewritten instead of reused        |      ✓      |      |       |
 | Pass-through wrappers, getters and aliases |      ✓      |      |       |
-| Flattened errors                           |      ✓      |      |       |
 
 ## Requirements
 
