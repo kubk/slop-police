@@ -43,7 +43,10 @@ jobs:
       id-token: write
 
     steps:
+      # Full history and tags let the release notes list commits since the previous tag.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Building the main package compiles TypeScript's JS API with go tool tsgo.
       - uses: actions/setup-go@v7
@@ -79,6 +82,14 @@ jobs:
           done
 
       - name: Create GitHub release
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --notes "npm i -D slop-police@${GITHUB_REF_NAME#v}"
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
+          {
+            echo "npm i -D slop-police@${GITHUB_REF_NAME#v}"
+            echo
+            git log --reverse --invert-grep --grep '^Release ' \
+              --format="- [%s]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/%H)" "$prev..$GITHUB_REF_NAME"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file notes.md
         env:
           GH_TOKEN: ${{ github.token }}
