@@ -333,15 +333,20 @@ export const legacyLinks = { a: '/a', b: '/b' }
 
 ## Comparison with other tools
 
-|                                            | slop-police | knip | jscpd |
-| ------------------------------------------ | :---------: | :--: | :---: |
-| Unused exports and files                   |      ✓      |  ✓   |       |
-| Unused enum members                        |      ✓      |  ✓   |       |
-| Unused class methods                       |      ✓      |      |       |
-| Unused object keys                         |      ✓      |      |       |
-| Copy-pasted code                           |      ✓      |      |   ✓   |
-| Helpers rewritten instead of reused        |      ✓      |      |       |
-| Pass-through wrappers, getters and aliases |      ✓      |      |       |
+|                                            | slop-police | ESLint | Sonar | knip | jscpd |
+| ------------------------------------------ | :---------: | :----: | :---: | :--: | :---: |
+| Unused exports and files                   |      ✓      |   ¹    |       |  ✓   |       |
+| Unused enum members                        |      ✓      |        |       |  ✓   |       |
+| Unused class methods                       |      ✓      |   ²    |   ²   |      |       |
+| Unused object keys                         |      ✓      |        |       |      |       |
+| Copy-pasted code                           |      ✓      |        |   ✓   |      |   ✓   |
+| Helpers rewritten instead of reused        |      ✓      |        |   ³   |      |       |
+| Pass-through wrappers, getters and aliases |      ✓      |        |   ⁴   |      |       |
+
+1. Partial: `import/no-unused-modules` finds exports nothing imports, but not exports used only in their own file or files unreachable from entry points.
+2. Partial: only `#private` members.
+3. Partial: `no-identical-functions` compares functions within one file and needs identical variable names.
+4. Partial: `redundant-type-aliases` catches aliases of primitives and of type aliases in the same file.
 
 ## Requirements
 
