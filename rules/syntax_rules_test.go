@@ -7,7 +7,6 @@ import (
 
 func TestSyntaxRules(t *testing.T) {
 	t.Parallel()
-	const cnMessage = "Use the class string directly instead of wrapping it in cn()"
 	tests := []struct {
 		name   string
 		rule   string
@@ -63,19 +62,6 @@ type Users = Array<User>;
 type Id = User["id"];
 `,
 			want: []finding{{3, "Type alias Member only renames User"}},
-		},
-		{
-			name: "cn with a single static string",
-			rule: "no-single-string-cn",
-			source: `
-declare function cn(...classes: unknown[]): string;
-declare const active: boolean;
-export const a = cn("p-2");
-export const b = cn(` + "`p-2`" + `);
-export const c = cn("p-2", active && "font-bold");
-export const d = cn(active ? "p-2" : "p-4");
-`,
-			want: []finding{{4, cnMessage}, {5, cnMessage}},
 		},
 	}
 	for _, test := range tests {

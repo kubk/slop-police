@@ -126,14 +126,6 @@ function render() {
 }
 ```
 
-### no-single-string-cn
-
-`cn()` with a single class string.
-
-```tsx
-<div className={cn('flex gap-2')} />
-```
-
 ### unused-object-keys
 
 Object keys that are never read.
