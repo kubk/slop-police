@@ -61,6 +61,45 @@ export const all = [ignoredObject.a, ignoredKey.a];
 	}
 }
 
+func TestUnusedIgnoreComments(t *testing.T) {
+	t.Parallel()
+	results := lintFindings(t, map[string]string{"fixture.ts": `
+class Store {
+  // slop-police-ignore unused-methods -- called from the devtools console
+  debug() {}
+  // slop-police-ignore unused-methods -- now called below
+  load() {}
+  // slop-police-ignore unused-methods, unused-object-keys
+  reset() {}
+  // slop-police-ignore unused-methods no-duplicate-code no-promise-default-fallback
+  close() {}
+}
+
+// slop-police-ignore
+export const links = { docs: "/docs" };
+
+// slop-police-ignore
+
+export const spaced = 1;
+
+new Store().load();
+export const all = [links.docs];
+`}, obj{"rules": obj{"unused-methods": "error", "unused-object-keys": "error", "unused-ignore": "warn"}})
+	want := []ruleMessage{
+		{"unused-ignore", "Ignore comment for unused-methods silences nothing"},
+		{"unused-ignore", "Ignore comment for unused-object-keys silences nothing"},
+		{"unused-ignore", `Ignore comment names unknown rule "no-promise-default-fallback"`},
+		{"unused-ignore", "Ignore comment silences nothing"},
+		{"unused-ignore", "Ignore comment silences nothing"},
+	}
+	if got := ruleMessages(results); !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if results[0].Line != 5 || results[0].Severity != "warn" {
+		t.Errorf("got %+v, want line 5 as a warning", results[0])
+	}
+}
+
 func TestUsagesAcrossProjects(t *testing.T) {
 	t.Parallel()
 	results := lintFindings(t, map[string]string{

@@ -65,7 +65,7 @@ func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return collectResults(config.Rules, runRules(ctx, config.Rules)), nil
+	return collectResults(ctx, config, runRules(ctx, config.Rules)), nil
 }
 
 // runRules runs the built-in rules among rules and returns the findings by
@@ -111,21 +111,45 @@ func runRules(ctx *Context, rules []EnabledRule) [][]Finding {
 }
 
 // collectResults turns the findings (by rule index) that aren't suppressed
-// by ignore comments into sorted results.
-func collectResults(rules []EnabledRule, perRule [][]Finding) []Result {
+// by ignore comments into sorted results, and reports the ignore comments
+// that suppress nothing when unused-ignore is enabled.
+func collectResults(ctx *Context, config *Config, perRule [][]Finding) []Result {
+	rules := config.Rules
 	var results []Result
+	used := map[ignoreUse]bool{}
+	enabled := map[string]bool{}
+	ignoreRule := -1
 	for i, findings := range perRule {
 		name := rules[i].Rule.Name
+		enabled[name] = true
+		if name == unusedIgnore {
+			ignoreRule = i
+		}
 		for _, f := range findings {
 			pos := f.Pos
+			var comment int
+			var ignored bool
 			if f.Node != nil {
 				pos = Start(f.Node, f.File.Source)
+				comment, ignored = isIgnored(f.File, f.Node, name)
+			} else {
+				comment, ignored = isIgnoredAt(f.File, pos, name)
 			}
-			if f.Node != nil && isIgnored(f.File, f.Node, name) || f.Node == nil && isIgnoredAt(f.File, pos, name) {
+			if ignored {
+				used[ignoreUse{f.File, comment, ""}] = true
+				used[ignoreUse{f.File, comment, name}] = true
 				continue
 			}
 			line, column := f.File.LineAndColumn(pos)
 			results = append(results, Result{name, rules[i].Severity, f.File.RelPath, line + 1, column + 1, f.Message})
+		}
+	}
+	// Its own findings can't be ignored: that would take an ignore comment
+	// for the ignore comment.
+	if ignoreRule >= 0 {
+		for _, f := range unusedIgnores(ctx.Files, config.knownRules, enabled, used) {
+			line, column := f.File.LineAndColumn(f.Pos)
+			results = append(results, Result{unusedIgnore, rules[ignoreRule].Severity, f.File.RelPath, line + 1, column + 1, f.Message})
 		}
 	}
 	slices.SortStableFunc(results, func(a, b Result) int {

@@ -43,6 +43,7 @@ type host struct {
 	*api.Session
 	timing *Timing
 
+	config  *Config
 	rules   []EnabledRule
 	plugins map[string]int // indexes of the enabled plugin rules by name
 	ctx     *Context
@@ -119,7 +120,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 		return &startResult{Error: err.Error(), ExitCode: errorExitCode(err)}, nil
 	}
 
-	h.rules, h.ctx, h.done, h.started = config.Rules, ctx, make(chan struct{}), time.Now()
+	h.config, h.rules, h.ctx, h.done, h.started = config, config.Rules, ctx, make(chan struct{}), time.Now()
 	go func() {
 		defer close(h.done)
 		h.perRule = runRules(ctx, config.Rules)
@@ -174,7 +175,7 @@ func (h *host) finish(params *finishParams) (*finishResult, error) {
 			h.perRule[i] = append(h.perRule[i], Finding{File: file, Node: node, Message: f.Message})
 		}
 	}
-	results := collectResults(h.rules, h.perRule)
+	results := collectResults(h.ctx, h.config, h.perRule)
 	return &finishResult{Results: results, Output: Format(results), ExitCode: exitCode(results)}, nil
 }
 

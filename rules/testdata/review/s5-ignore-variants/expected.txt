@@ -1,12 +1,19 @@
 exit 1
 a.ts:6:6   error  no-identity-type-alias  Type alias A3 only renames Y
 a.ts:8:6   error  no-identity-type-alias  Type alias A4 only renames Y
+a.ts:11:1  error  unused-ignore           Ignore comment names unknown rule "other-rule"
 a.ts:14:6  error  no-identity-type-alias  Type alias A7 only renames Y
+a.ts:15:1  error  unused-ignore           Ignore comment silences nothing
 a.ts:17:6  error  no-identity-type-alias  Type alias A8 only renames Y
 a.ts:19:6  error  no-identity-type-alias  Type alias A9 only renames Y
 a.ts:21:6  error  no-identity-type-alias  Type alias A10 only renames Y
 a.ts:25:6  error  no-identity-type-alias  Type alias A12 only renames Y
+a.ts:34:1  error  unused-ignore           Ignore comment silences nothing
 a.ts:36:6  error  no-identity-type-alias  Type alias A17 only renames Y
+a.ts:38:3  error  unused-ignore           Ignore comment silences nothing
+a.ts:42:3  error  unused-ignore           Ignore comment silences nothing
+a.ts:45:3  error  unused-ignore           Ignore comment silences nothing
+a.ts:50:1  error  unused-ignore           Ignore comment names unknown rule "\u0085"
 a.ts:51:6  error  no-identity-type-alias  Type alias A19 only renames Y
 
-9 errors, 0 warnings
+16 errors, 0 warnings

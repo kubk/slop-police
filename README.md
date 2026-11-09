@@ -323,6 +323,16 @@ class Store {
 export const legacyLinks = { a: '/a', b: '/b' }
 ```
 
+The `unused-ignore` rule reports ignore comments that silence nothing, either because the code they covered was fixed or because they name a rule that doesn't exist:
+
+```ts
+class Store {
+  // slop-police-ignore unused-methods -- Ignore comment for unused-methods silences nothing
+  load() {}
+}
+new Store().load()
+```
+
 ## Comparison with other tools
 
 |                                            | slop-police | ESLint | Sonar | knip | jscpd |

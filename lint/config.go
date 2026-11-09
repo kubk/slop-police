@@ -35,6 +35,8 @@ type Config struct {
 	Ignore    []string
 	TestFiles []string
 	Rules     []EnabledRule
+
+	knownRules map[string]bool // built-in and plugin rules, enabled or not
 }
 
 // LoadConfig reads and validates slop-police.json in root. pluginRules are
@@ -69,7 +71,7 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 		}
 	}
 
-	config := &Config{}
+	config := &Config{knownRules: map[string]bool{}}
 	if err := unmarshalOptional(raw["projects"], &config.Projects); err != nil || len(config.Projects) == 0 {
 		return nil, configErrorf(`"projects" must be a non-empty array of tsconfig paths`)
 	}
@@ -86,6 +88,10 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 			return nil, configErrorf("Plugin rule %s has the same name as a built-in rule", rule.Name)
 		}
 		pluginRulesByName[rule.Name] = rule
+		config.knownRules[rule.Name] = true
+	}
+	for name := range registry {
+		config.knownRules[name] = true
 	}
 	if err := unmarshalOptional(raw["ignore"], &config.Ignore); err != nil {
 		return nil, configErrorf(`"ignore" must be an array of glob patterns`)
