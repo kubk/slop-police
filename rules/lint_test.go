@@ -373,3 +373,68 @@ export const all = [workers, stage, manifest];
 		t.Errorf("got %v\nwant %s", err, want)
 	}
 }
+
+func TestPublicAPI(t *testing.T) {
+	t.Parallel()
+	results := lintFindings(t, map[string]string{
+		"index.ts": `
+export { Store, Mode, labels, type Item, format } from "./store.ts";
+export * from "./graph.ts";
+export * as internal from "./internal.ts";
+`,
+		"store.ts": `
+class Base {
+  inherited() {}
+  close() {}
+}
+export class Store extends Base {
+  close() { return super.close(); }
+  private items = new Map<string, string>();
+  get size() { return this.length; }
+  get length() { return 0; }
+  load(key: string) { return this.items.get(key); }
+  reload(key: string) { return this.read(key); }
+  private read(key: string) { return key; }
+  private unusedPrivate() { return 1; }
+}
+export enum Mode { A, B }
+export const labels = { a: "A", b: "B" };
+type Inner = { id: string };
+export type Item = Inner;
+declare function formatValue(value: number): string;
+export function format(value: number) { return formatValue(value); }
+export class Unexported {
+  unused() {}
+}
+`,
+		"graph.ts": `
+import { labels } from "./store.ts";
+export class Graph {
+  walk() { return labels.a; }
+}
+`,
+		"internal.ts": `
+export class Helper {
+  help() {}
+}
+`,
+	}, obj{
+		"entry": []string{"index.ts"},
+		"rules": obj{
+			"unused-methods":          []any{"error", obj{"includePrivate": true}},
+			"no-pass-through-wrapper": "error",
+			"no-pass-through-getter":  "error",
+			"no-identity-type-alias":  "error",
+			"unused-enum-members":     "error",
+			"unused-object-keys":      "error",
+		},
+	})
+	want := []ruleMessage{
+		{"no-pass-through-wrapper", "Method close only forwards to super.close"},
+		{"unused-methods", "Method Store.unusedPrivate is never used"},
+		{"unused-methods", "Method Unexported.unused is never used"},
+	}
+	if got := ruleMessages(results); !slices.Equal(got, want) {
+		t.Errorf("got %v\nwant %v", got, want)
+	}
+}

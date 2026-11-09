@@ -18,7 +18,9 @@ func init() {
 					return
 				}
 				call := passThroughCall(fn)
-				if call == nil || !isRedundantOverride(fn, call) && (isShapeRequired(ch, node, fn) || addsTypes(ch, fn, call) || isPrivateMemberDelegation(ch, call)) {
+				// Public API keeps its wrappers, except overrides that change nothing.
+				isPublic := file.IsPublic(node) || isPublicMember(file, node)
+				if call == nil || !isRedundantOverride(fn, call) && (isPublic || isShapeRequired(ch, node, fn) || addsTypes(ch, fn, call) || isPrivateMemberDelegation(ch, call)) {
 					return
 				}
 				callee := strings.Join(strings.Fields(lint.Text(call.Expression(), file.Source)), "")

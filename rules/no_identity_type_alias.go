@@ -9,7 +9,7 @@ func init() {
 	lint.Register(&lint.Rule{
 		Name: "no-identity-type-alias",
 		Visit: func(file *lint.File, node *ast.Node, _ lint.Options, report lint.Report) {
-			if node.Kind != ast.KindTypeAliasDeclaration {
+			if node.Kind != ast.KindTypeAliasDeclaration || file.IsPublic(node) {
 				return
 			}
 			aliased := node.AsTypeAliasDeclaration().Type

@@ -4,6 +4,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/ast"
 	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/internal/tspath"
+	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
 // forEachNode walks root and its descendants in forEachChild order (pre-order).
@@ -71,6 +72,13 @@ func isFunctionLikeDeclaration(node *ast.Node) bool {
 
 func isClassLike(node *ast.Node) bool {
 	return node != nil && (node.Kind == ast.KindClassDeclaration || node.Kind == ast.KindClassExpression)
+}
+
+// isPublicMember reports whether member is a public member of a class that
+// an entry point exports: code outside the analyzed files may use it.
+func isPublicMember(file *lint.File, member *ast.Node) bool {
+	return isClassLike(member.Parent) && file.IsPublic(member.Parent) && member.Name() != nil && member.Name().Kind != ast.KindPrivateIdentifier &&
+		!hasModifier(member, ast.KindPrivateKeyword) && !hasModifier(member, ast.KindProtectedKeyword)
 }
 
 func hasModifier(node *ast.Node, kind ast.Kind) bool {

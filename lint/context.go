@@ -59,11 +59,13 @@ type File struct {
 	Source  *ast.SourceFile
 	Project *Project
 	IsTest  bool
+	IsEntry bool // matches the entry option
 	RelPath string
 
 	projectIndex int // position among the project's analyzed files
 	lineOnce     sync.Once
 	lineStarts   []core.TextPos
+	public       map[int]bool // positions of public declarations (see IsPublic)
 }
 
 type Context struct {
@@ -75,6 +77,9 @@ type Context struct {
 	// of Files.
 	Unanalyzed []*File
 	Timing     *Timing
+	// HasEntries is set when the config lists entry points: files that
+	// something outside the analyzed code loads.
+	HasEntries bool
 
 	filesByPath map[tspath.Path]*File
 }
@@ -100,7 +105,7 @@ func newProjectSession(root string) *project.Session {
 // files, each owned by the first project that lists it, minus ignored ones.
 func newContext(session *project.Session, config *Config, timing *Timing) (*Context, error) {
 	root := session.GetCurrentDirectory()
-	ctx := &Context{Timing: timing, filesByPath: map[tspath.Path]*File{}}
+	ctx := &Context{Timing: timing, HasEntries: len(config.Entry) > 0, filesByPath: map[tspath.Path]*File{}}
 	request := &project.APISnapshotRequest{OpenProjects: &collections.Set[string]{}}
 	configPaths := make([]string, len(config.Projects))
 	for i, projectPath := range config.Projects {
@@ -145,7 +150,7 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 			if MatchesAny(config.Ignore, rel) || gitignored.ignored(sf.FileName()) {
 				continue
 			}
-			file := &File{Index: len(ctx.Files), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files)}
+			file := &File{Index: len(ctx.Files), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), IsEntry: MatchesAny(config.Entry, rel), RelPath: rel, projectIndex: len(p.files)}
 			p.files = append(p.files, file)
 			ctx.filesByPath[sf.Path()] = file
 			ctx.Files = append(ctx.Files, file)
@@ -159,12 +164,16 @@ func newContext(session *project.Session, config *Config, timing *Timing) (*Cont
 			}
 			unanalyzed[sf.Path()] = true
 			rel := relativePath(root, sf.FileName())
-			ctx.Unanalyzed = append(ctx.Unanalyzed, &File{Index: len(ctx.Files) + len(ctx.Unanalyzed), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), RelPath: rel, projectIndex: len(p.files) + len(ctx.Unanalyzed)})
+			ctx.Unanalyzed = append(ctx.Unanalyzed, &File{Index: len(ctx.Files) + len(ctx.Unanalyzed), Source: sf, Project: p, IsTest: MatchesAny(config.TestFiles, rel), IsEntry: MatchesAny(config.Entry, rel), RelPath: rel, projectIndex: len(p.files) + len(ctx.Unanalyzed)})
 		}
 	}
 	timing.Mark(fmt.Sprintf("collect files (%d)", len(ctx.Files)))
 	if err := checkImports(ctx); err != nil {
 		return nil, err
+	}
+	if ctx.HasEntries {
+		ctx.markPublicDeclarations()
+		timing.Mark("public declarations")
 	}
 	return ctx, nil
 }

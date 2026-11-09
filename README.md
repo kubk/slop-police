@@ -166,10 +166,10 @@ export function format() {} // Export format is never used
 import { parse } from './lib'
 ```
 
-If you want to be extra strict, list your entry points in the `entry` option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
+If you want to be extra strict, list your entry points in the [`entry`](#configuration) option. slop-police then also finds whole files that nothing imports from them or from tests. Code used only by such dead files counts as unused too.
 
 ```json
-"unused-exports": ["error", { "entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"] }]
+"entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"]
 ```
 
 ### unused-methods
@@ -198,7 +198,8 @@ Put a `slop-police.json` in the directory you run it from:
 - `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
 - `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
-- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like the stricter `unused-exports` setup above, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
+- `entry`: glob patterns for the files that something outside the analyzed code loads, like `src/main.tsx` or a package's `src/index.ts`. With it, `unused-exports` also reports files that nothing imports from them. What they export is public API: its methods, getters, wrappers, type aliases, enum members and object keys aren't reported.
+- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like `no-duplicate-code`'s `minLines`, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 ## CI

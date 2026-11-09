@@ -24,9 +24,8 @@ import (
 // Uses in those files don't count.
 func init() {
 	lint.Register(&lint.Rule{
-		Name:           "unused-exports",
-		DefaultOptions: lint.Options{"entry": []any{}},
-		Check:          checkUnusedExports,
+		Name:  "unused-exports",
+		Check: checkUnusedExports,
 	})
 }
 
@@ -47,7 +46,7 @@ type moduleEdges struct {
 	star    []tspath.Path // export * from
 }
 
-func checkUnusedExports(ctx *lint.Context, options lint.Options) []lint.Finding {
+func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 	phase := ctx.Timing.Phase("unused-exports")
 	files := append(slices.Clip(ctx.Files), ctx.Unanalyzed...)
 	byPath := make(map[tspath.Path]*lint.File, len(files))
@@ -63,11 +62,11 @@ func checkUnusedExports(ctx *lint.Context, options lint.Options) []lint.Finding 
 	checked := make([]bool, len(files))
 	live := make([]bool, len(files))
 	var findings []lint.Finding
-	if entries := options.Strings("entry"); len(entries) > 0 {
+	if ctx.HasEntries {
 		// Declaration files take effect without being imported.
 		var queue []*lint.File
 		for _, file := range files {
-			if file.IsTest || file.Source.IsDeclarationFile || lint.MatchesAny(entries, file.RelPath) {
+			if file.IsTest || file.Source.IsDeclarationFile || file.IsEntry {
 				live[file.Index] = true
 				queue = append(queue, file)
 			}

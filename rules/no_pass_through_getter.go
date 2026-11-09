@@ -10,7 +10,7 @@ func init() {
 		Name: "no-pass-through-getter",
 		Visit: func(file *lint.File, node *ast.Node, _ lint.Options, report lint.Report) {
 			target := passThroughGetterTarget(node)
-			if target == nil {
+			if target == nil || isPublicMember(file, node) {
 				return
 			}
 			name := node.Name()

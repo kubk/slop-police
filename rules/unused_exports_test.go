@@ -8,10 +8,11 @@ import (
 func TestUnusedExports(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
-		files   map[string]string
-		options obj
-		want    []locatedFinding
+		name     string
+		files    map[string]string
+		entry    []string
+		projects []string
+		want     []locatedFinding
 	}{
 		{
 			name: "exports used only in their file or never",
@@ -139,6 +140,56 @@ export { named } from "./named.ts";
 			},
 		},
 		{
+			name: "entry points expose what chained export * re-exports",
+			files: map[string]string{
+				"index.ts": `export * from "./mid.ts";`,
+				"mid.ts":   `export * from "./leaf.ts";`,
+				"leaf.ts":  "export const a = 1;\n",
+			},
+		},
+		{
+			name: "a dynamic import of a barrel uses its own exports, not what it re-exports with export *",
+			files: map[string]string{
+				"main.ts":   `export const load = () => import("./barrel.ts");`,
+				"barrel.ts": "export * from \"./leaf.ts\";\nexport const own = 1;\n",
+				"leaf.ts":   "export const a = 1;\n",
+			},
+			want: []locatedFinding{
+				{"leaf.ts", 1, 14, "Export a is never used"},
+			},
+		},
+		{
+			name:  "imports of a referenced project's output use its sources",
+			entry: []string{"app/main.ts"},
+			files: map[string]string{
+				"lib/tsconfig.json": `{"compilerOptions": {"composite": true, "strict": true, "module": "ESNext", "moduleResolution": "Bundler", "outDir": ".tsbuild", "rootDir": "src"}, "include": ["src"]}`,
+				"lib/src/index.ts":  `export { helper } from "./helper";`,
+				"lib/src/helper.ts": "export function helper() { return 1; }\n",
+				"app/tsconfig.json": `{"compilerOptions": {"strict": true, "module": "ESNext", "moduleResolution": "Bundler", "noEmit": true, "paths": {"lib": ["../lib/.tsbuild/index.d.ts"]}}, "include": ["main.ts"], "references": [{"path": "../lib"}]}`,
+				"app/main.ts":       `import { helper } from "lib"; helper();`,
+			},
+			projects: []string{"lib/tsconfig.json", "app/tsconfig.json"},
+		},
+		{
+			name: "default of a dynamically imported export = module",
+			files: map[string]string{
+				"cjs.d.ts": `
+declare module "cjs" {
+  const value: { a: number };
+  export = value;
+}
+`,
+				"a.ts": "export default 1;\n",
+				"main.ts": `
+import one from "./a.ts";
+export async function load() {
+  const { default: mod } = await import("cjs");
+  return mod.a + one + (await import("cjs")).default.a;
+}
+`,
+			},
+		},
+		{
 			name: "namespace imports use members, or everything when the namespace escapes",
 			files: map[string]string{
 				"main.ts": `
@@ -209,8 +260,8 @@ export const debug = 1;
 			},
 		},
 		{
-			name:    "with entry points, unreachable files are reported and their uses don't count",
-			options: obj{"entry": []string{"src/main.ts"}},
+			name:  "with entry points, unreachable files are reported and their uses don't count",
+			entry: []string{"src/main.ts"},
 			files: map[string]string{
 				"src/main.ts": `
 import { live } from "./live.ts";
@@ -245,11 +296,14 @@ export const check = [live, fixture];
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			var rule any = "error"
-			if tt.options != nil {
-				rule = []any{"error", tt.options}
+			config := obj{"rules": obj{"unused-exports": "error"}}
+			if tt.entry != nil {
+				config["entry"] = tt.entry
 			}
-			results := lintFindings(t, tt.files, obj{"rules": obj{"unused-exports": rule}})
+			if tt.projects != nil {
+				config["projects"] = tt.projects
+			}
+			results := lintFindings(t, tt.files, config)
 			if got := locatedFindings(results); !slices.Equal(got, tt.want) {
 				t.Errorf("got %v\nwant %v", got, tt.want)
 			}

@@ -159,7 +159,7 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 			continue
 		}
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
-			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) {
+			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) && !isPublicMember(file, node) {
 				key := classMemberKey(node.Parent, node.Name().Text())
 				key.static = hasModifier(node, ast.KindStaticKeyword)
 				candidates = append(candidates, &methodCandidate{file, node, key})

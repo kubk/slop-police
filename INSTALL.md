@@ -25,41 +25,34 @@ Put one config at the repository root, even in a monorepo: usages are counted ac
   ],
   "ignore": ["**/routeTree.gen.ts", "packages/web/src/components/ui/**"],
   "testFiles": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
-  "rules": {
-    "unused-exports": [
-      "error",
-      {
-        "entry": [
-          "packages/*/vite.config.ts",
-          "packages/api/src/index.ts",
-          "packages/api/scripts/*.ts",
-          "packages/web/src/main.tsx",
-          "packages/web/src/routes/**/*.tsx"
-        ]
-      }
-    ]
-  }
+  "entry": [
+    "packages/*/vite.config.ts",
+    "packages/api/src/index.ts",
+    "packages/api/scripts/*.ts",
+    "packages/web/src/main.tsx",
+    "packages/web/src/routes/**/*.tsx"
+  ]
 }
 ```
 
-**`projects`**: every tsconfig that includes source files, tooling ones like `tsconfig.node.json` too, so config files get analyzed. A solution-style tsconfig (`"files": []` with `references`) includes no files and makes slop-police report nothing. List the tsconfigs it references instead.
+**`projects`**: every tsconfig that includes source files, tooling ones like `tsconfig.node.json` too, so config files get analyzed. A solution-style tsconfig (`"files": []` with `references`) includes no files and makes slop-police report nothing. List the tsconfigs it references instead. Tests count as uses only when a listed tsconfig includes them, so if every tsconfig excludes them, add one that includes them.
 
 **`testFiles`**: globs for the tests and test-only code the repository actually has, such as mocks, fixtures and `*.test-d.ts` files. Usages in tests count, but declarations in tests aren't reported as unused or duplicated.
 
 **`ignore`**: only generated code (route trees, API clients) and vendored code the team copied in rather than wrote, such as shadcn components (see `components.json`). Files that `.gitignore` ignores are already skipped.
 
-**`rules`**: every built-in rule is already on as an error. The usual entry is the `entry` option of `unused-exports`. With it, slop-police also reports files that nothing imports, and code used only by such files. That's where most dead code is found, so list every file that something outside the analyzed code loads:
+**`entry`**: with it, slop-police also reports files that nothing imports, and code used only by such files. That's where most dead code is found, so list every file that something outside the analyzed code loads:
 
-- The source files behind `main`, `exports` and `bin` in package.json.
+- The source files behind `main`, `exports` and `bin` in the package.json of published packages. A workspace package that only the repository uses is reached through its imports.
 - Scripts run directly from package.json `scripts`, CI or docs.
 - App and server entries: `<script src>` in `index.html`, a worker's `main` in its wrangler config, a server's start file.
 - Files a framework loads by convention: file-based routes, Next.js `app/` and `pages/`, a router config.
 - Config files and what they point to: `vite.config.ts`, `vitest.config.ts` and its `setupFiles`, `drizzle.config.ts`.
 - Files imported from code outside the listed projects.
 
-Tests are entry points already. An entry's own exports aren't checked, so don't list a file that something else already imports.
+Tests are entry points already. An entry's own exports aren't checked, and neither are the members of the classes it exports, so don't list a file that something else already imports.
 
-Keep the other rules at their defaults.
+**`rules`**: every built-in rule is already on as an error. Keep them at their defaults.
 
 ## 4. Run it and sort the findings
 

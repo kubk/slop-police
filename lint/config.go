@@ -34,6 +34,7 @@ type Config struct {
 	Projects  []string
 	Ignore    []string
 	TestFiles []string
+	Entry     []string
 	Rules     []EnabledRule
 
 	knownRules map[string]bool // built-in and plugin rules, enabled or not
@@ -65,7 +66,7 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 	}
 	for _, key := range sortedKeys(raw) {
 		switch key {
-		case "projects", "plugins", "ignore", "testFiles", "rules":
+		case "projects", "plugins", "ignore", "testFiles", "entry", "rules":
 		default:
 			return nil, configErrorf("Unknown config key: %s", key)
 		}
@@ -98,6 +99,9 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 	}
 	if err := unmarshalOptional(raw["testFiles"], &config.TestFiles); err != nil {
 		return nil, configErrorf(`"testFiles" must be an array of glob patterns`)
+	}
+	if err := unmarshalOptional(raw["entry"], &config.Entry); err != nil {
+		return nil, configErrorf(`"entry" must be an array of glob patterns`)
 	}
 	var entries map[string]json.RawMessage
 	if err := unmarshalOptional(raw["rules"], &entries); err != nil {

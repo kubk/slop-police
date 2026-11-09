@@ -131,7 +131,7 @@ func collectObjectCandidates(ctx *lint.Context) ([]*objectCandidate, map[declKey
 			for _, declaration := range list.AsVariableDeclarationList().Declarations.Nodes {
 				decl := declaration.AsVariableDeclaration()
 				name := declaration.Name()
-				if name.Kind != ast.KindIdentifier || decl.Type != nil {
+				if name.Kind != ast.KindIdentifier || decl.Type != nil || file.IsPublic(declaration) {
 					continue
 				}
 				object := unwrapAsConst(decl.Initializer)
