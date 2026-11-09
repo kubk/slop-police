@@ -230,6 +230,18 @@ run(Math.random() > 0.5 ? new BrowserPlatform() : new TelegramPlatform());
 			want: []string{"Method BrowserPlatform.unused is never used"},
 		},
 		{
+			name: "recursion is not a use",
+			files: map[string]string{"tree.ts": `
+class Tree {
+  walk(n: number): number { return n > 0 ? this.walk(n - 1) : 0; }
+  visit(n: number): number { return n > 0 ? this.visit(n - 1) : 0; }
+  get depth(): number { return this.depth; }
+}
+new Tree().visit(3);
+`},
+			want: []string{"Method Tree.walk is never used", "Getter Tree.depth is never used"},
+		},
+		{
 			name: "calls from test files count",
 			files: map[string]string{
 				"store.ts": `

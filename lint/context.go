@@ -295,9 +295,10 @@ type ReferenceQuery struct {
 
 // AnyReference runs each query exactly like the API server's
 // getReferencedSymbolsForNode (find-all-references over all source files of
-// the project's program, on one checker) and reports whether any reference
-// node is accepted. Queries run in parallel on the project's checkers.
-func (c *Context) AnyReference(queries []ReferenceQuery, accept func(ref *ast.Node) bool) []bool {
+// the project's program, on one checker) and reports whether accept takes any
+// reference node of the query (by its index). Queries run in parallel on the
+// project's checkers.
+func (c *Context) AnyReference(queries []ReferenceQuery, accept func(query int, ref *ast.Node) bool) []bool {
 	byProject := map[*Project][]int{}
 	var projects []*Project
 	for i, q := range queries {
@@ -337,7 +338,7 @@ func (c *Context) AnyReference(queries []ReferenceQuery, accept func(ref *ast.No
 		for i := int(w.next.Add(1) - 1); i < len(indexes); i = int(w.next.Add(1) - 1) {
 			q := queries[indexes[i]]
 			entries := service.GetReferencedSymbolsForNode(w.project.checkerCtx[w.index], q.Position, q.Node, w.project.Program.GetSourceFiles())
-			found[indexes[i]] = anyAccepted(entries, accept)
+			found[indexes[i]] = anyAccepted(entries, func(ref *ast.Node) bool { return accept(indexes[i], ref) })
 		}
 	})
 	return found

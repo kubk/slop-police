@@ -13,7 +13,8 @@ import (
 )
 
 // unused-methods reports class methods and accessors (with a body) that are
-// never referenced. A member counts as used when:
+// never referenced outside their own bodies, so recursion isn't a use. A
+// member counts as used when:
 //   - some identifier or string literal with its name resolves to it (or to
 //     a member it implements or overrides),
 //   - it implements or overrides a member declared outside the analyzed
@@ -353,7 +354,9 @@ func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[st
 			switch declaration.Kind {
 			case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor, ast.KindMethodSignature, ast.KindPropertySignature:
 				for _, key := range membersByDeclaration[keyOfDeclaration(declaration)] {
-					used.add(key)
+					if !isInsideMember(node, key) {
+						used.add(key)
+					}
 				}
 			}
 		}
@@ -438,14 +441,29 @@ func hasReferencesOutsideDeclaration(ctx *lint.Context, candidates []*methodCand
 			owners = append(owners, i)
 		}
 	}
-	answers := ctx.AnyReference(queries, func(ref *ast.Node) bool {
-		return ctx.IsAnalyzedPath(pathOf(ref)) && !isClassMemberDeclarationName(ref)
+	answers := ctx.AnyReference(queries, func(query int, ref *ast.Node) bool {
+		return ctx.IsAnalyzedPath(pathOf(ref)) && !isClassMemberDeclarationName(ref) && !isInsideMember(ref, candidates[owners[query]].key)
 	})
 	result := make([]bool, len(candidates))
 	for qi, ok := range answers {
 		result[owners[qi]] = result[owners[qi]] || ok
 	}
 	return result
+}
+
+// isInsideMember reports whether node, in any parse of its file, is inside
+// the body of the member with key (either accessor of a pair).
+func isInsideMember(node *ast.Node, key memberKey) bool {
+	for current := node.Parent; current != nil; current = current.Parent {
+		if isCheckedClassMember(current) && current.Name().Kind == ast.KindIdentifier {
+			own := classMemberKey(current.Parent, current.Name().Text())
+			own.static = hasModifier(current, ast.KindStaticKeyword)
+			if own == key {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isClassMemberDeclarationName(node *ast.Node) bool {
