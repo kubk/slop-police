@@ -67,6 +67,15 @@ function example() {
   const alias = VALUE;
   function nested(VALUE) { return { alias }; }
 }`)},
+		{name: "capitalized alias of a lowercase component for JSX", want: 1, files: map[string]string{"fixture.tsx": `
+declare const JSX: any;
+const layout = () => null;
+const Page = () => null;
+export function render() {
+  const Layout = layout;
+  const Other = Page;
+  return [<Layout />, <Other />];
+}`}},
 		{name: "object mutation is not reassignment", want: 1, files: fixture(`const OBJECT = {};
 function example() { const alias = OBJECT; alias.value = 2; }`)},
 		{name: "writes to unrelated property names", want: 1, files: fixture(`const VALUE = 1;

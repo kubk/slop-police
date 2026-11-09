@@ -1,6 +1,9 @@
 package rules
 
 import (
+	"slices"
+	"unicode"
+
 	"github.com/microsoft/typescript-go/internal/ast"
 	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
@@ -218,6 +221,11 @@ func (a *aliasAnalysis) findRedundantAliases(ch *checker.Checker) []*ast.Node {
 			}
 		}
 		sourceName := initializer.Text()
+		// <component /> would be an HTML element: JSX needs the capitalized
+		// alias.
+		if !startsUppercase(sourceName) && slices.ContainsFunc(aliasReferences, isJsxTagName) {
+			continue
+		}
 		visibleEverywhere := true
 		for _, reference := range aliasReferences {
 			b := toBinding(ch.ResolveName(sourceName, reference, ast.SymbolFlagsValue, false))
@@ -244,6 +252,18 @@ func (a *aliasAnalysis) findRedundantAliases(ch *checker.Checker) []*ast.Node {
 		result = append(result, node)
 	}
 	return result
+}
+
+func startsUppercase(name string) bool {
+	return name != "" && unicode.IsUpper([]rune(name)[0])
+}
+
+func isJsxTagName(node *ast.Node) bool {
+	switch parent := node.Parent; parent.Kind {
+	case ast.KindJsxOpeningElement, ast.KindJsxSelfClosingElement, ast.KindJsxClosingElement:
+		return parent.TagName() == node
+	}
+	return false
 }
 
 func isConstVariable(symbol *ast.Symbol) bool {
