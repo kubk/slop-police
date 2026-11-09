@@ -48,6 +48,7 @@ type host struct {
 	plugins map[string]int // indexes of the enabled plugin rules by name
 	ctx     *Context
 	perRule [][]Finding
+	err     error         // a crash of the built-in rules
 	done    chan struct{} // closed once the built-in rules are done
 	started time.Time     // when the launcher started running plugin rules
 }
@@ -123,7 +124,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 	h.config, h.rules, h.ctx, h.done, h.started = config, config.Rules, ctx, make(chan struct{}), time.Now()
 	go func() {
 		defer close(h.done)
-		h.perRule = runRules(ctx, config.Rules)
+		h.perRule, h.err = runRules(ctx, config.Rules)
 	}()
 
 	result := &startResult{}
@@ -151,6 +152,7 @@ type finishParams struct {
 type finishResult struct {
 	Results  []Result `json:"results"`
 	Output   string   `json:"output"`
+	Error    string   `json:"error,omitempty"`
 	ExitCode int      `json:"exitCode"`
 }
 
@@ -160,6 +162,9 @@ func (h *host) finish(params *finishParams) (*finishResult, error) {
 	}
 	h.timing.Span("plugin rules", time.Since(h.started))
 	<-h.done
+	if h.err != nil {
+		return &finishResult{Error: h.err.Error(), ExitCode: errorExitCode(h.err)}, nil
+	}
 	for _, f := range params.Findings {
 		i, ok := h.plugins[f.Rule]
 		if !ok {

@@ -266,23 +266,37 @@ func (c *Context) ForEachFile(files []*File, fn func(f *File, ch *checker.Checke
 		g.project.checkerLocks[g.index].Lock()
 		defer g.project.checkerLocks[g.index].Unlock()
 		for _, f := range g.files {
-			fn(f, g.project.checkers[g.index])
+			func() {
+				defer rethrow("", f)
+				fn(f, g.project.checkers[g.index])
+			}()
 		}
 	})
 }
 
-// Parallel runs fn(i) for i in [0, n) on Workers goroutines.
+// Parallel runs fn(i) for i in [0, n) on Workers goroutines. A panic in fn
+// stops the remaining calls and is raised again in the caller's goroutine.
 func (c *Context) Parallel(n int, fn func(i int)) {
 	var next atomic.Int64
 	var wg sync.WaitGroup
+	var crash atomic.Pointer[CrashError]
 	for range min(Workers, n) {
 		wg.Go(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					crash.CompareAndSwap(nil, asCrash(r, "", nil))
+					next.Store(int64(n))
+				}
+			}()
 			for i := int(next.Add(1) - 1); i < n; i = int(next.Add(1) - 1) {
 				fn(i)
 			}
 		})
 	}
 	wg.Wait()
+	if crash := crash.Load(); crash != nil {
+		panic(crash)
+	}
 }
 
 // ReferenceQuery is a find-all-references request at Node, a node of

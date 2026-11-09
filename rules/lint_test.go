@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
@@ -210,6 +211,32 @@ func TestPluginConfig(t *testing.T) {
 		if err == nil || err.Error() != test.want {
 			t.Errorf("%s: got error %v, want %q", test.config, err, test.want)
 		}
+	}
+}
+
+// crashRule panics in files that mention it, to test crash reports.
+func init() {
+	lint.Register(&lint.Rule{
+		Name: "test-crash",
+		CheckFile: func(file *lint.File, _ *checker.Checker, _ lint.Options, _ lint.Report) {
+			if strings.Contains(file.Source.Text(), "test-crash") {
+				panic("boom")
+			}
+		},
+	})
+}
+
+func TestCrash(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, map[string]string{
+		"ok.ts":            "export const a = 1;\n",
+		"src/bad.ts":       "// test-crash\nexport const b = 1;\n",
+		"slop-police.json": `{"projects": ["tsconfig.json"], "rules": {"test-crash": "error", "unused-exports": "error"}}`,
+	})
+	var stdout, stderr bytes.Buffer
+	code := lint.Run(root, &stdout, &stderr, nil)
+	if code != 3 || stdout.Len() != 0 || !strings.HasPrefix(stderr.String(), "slop-police crashed in test-crash on src/bad.ts: boom\n") || !strings.Contains(stderr.String(), "rules_test.init") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 }
 

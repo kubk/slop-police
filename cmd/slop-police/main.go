@@ -1,6 +1,6 @@
 // Command slop-police lints the TypeScript projects listed in
-// ./slop-police.json. It exits with 1 when there are errors and 2 for config
-// errors. SLOP_POLICE_TIMING=1 prints phase timings to stderr.
+// ./slop-police.json. It exits with 1 when there are errors, 2 for config
+// errors and 3 when it crashes. SLOP_POLICE_TIMING=1 prints phase timings to stderr.
 //
 // With --api --cwd <dir> it serves the TypeScript API on stdin and stdout
 // instead, for the npm launcher that runs plugin rules (see lint.Serve).

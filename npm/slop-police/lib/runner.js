@@ -5,7 +5,7 @@ import { isRule, visitorHandlers } from './rule.js'
 import { API } from './typescript/dist/api/sync/api.js'
 
 // LintError is a failed run, with the exit code to report it with: 2 for
-// config errors, 1 for others.
+// config errors, 3 for crashes, 1 for others.
 class LintError extends Error {
   constructor(message, exitCode) {
     super(message)
@@ -80,7 +80,11 @@ export function lint(binary, root, rules) {
       throw new LintError(start.error, start.exitCode)
     }
     const findings = start.rules.length > 0 ? runRules(api, start, rules) : []
-    return client.apiRequest('slopPolice/finish', { findings })
+    const result = client.apiRequest('slopPolice/finish', { findings })
+    if (result.error) {
+      throw new LintError(result.error, result.exitCode)
+    }
+    return result
   } finally {
     api.close()
   }

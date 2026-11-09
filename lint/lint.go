@@ -25,7 +25,7 @@ type Result struct {
 
 // Run lints the project in root (reading root/slop-police.json), prints the
 // report to stdout and returns the exit code: 0, 1 when there are errors, 2
-// for config errors (printed to stderr).
+// for config errors and 3 when slop-police crashes (both printed to stderr).
 func Run(root string, stdout, stderr io.Writer, timing *Timing) int {
 	config, err := LoadConfig(root, nil)
 	var results []Result
@@ -50,31 +50,41 @@ func exitCode(results []Result) int {
 	return 0
 }
 
-// errorExitCode is 2 for config errors, 1 for other errors.
+// errorExitCode is 2 for config errors, 3 for crashes, 1 for other errors.
 func errorExitCode(err error) int {
-	if errors.As(err, new(*ConfigError)) {
+	switch {
+	case errors.As(err, new(*ConfigError)):
 		return 2
+	case errors.As(err, new(*CrashError)):
+		return 3
 	}
 	return 1
 }
 
 // Lint runs every enabled rule and returns the sorted findings that are not
 // suppressed by ignore comments.
-func Lint(root string, config *Config, timing *Timing) ([]Result, error) {
+func Lint(root string, config *Config, timing *Timing) (results []Result, err error) {
+	defer recoverCrash(&err)
 	ctx, err := newContext(newProjectSession(root), config, timing)
 	if err != nil {
 		return nil, err
 	}
-	return collectResults(ctx, config, runRules(ctx, config.Rules)), nil
+	perRule, err := runRules(ctx, config.Rules)
+	if err != nil {
+		return nil, err
+	}
+	return collectResults(ctx, config, perRule), nil
 }
 
 // runRules runs the built-in rules among rules and returns the findings by
-// rule index (none for plugin rules).
-func runRules(ctx *Context, rules []EnabledRule) [][]Finding {
+// rule index (none for plugin rules), or a *CrashError.
+func runRules(ctx *Context, rules []EnabledRule) (perRule [][]Finding, err error) {
+	defer recoverCrash(&err)
 	timing := ctx.Timing
-	perRule := make([][]Finding, len(rules))
+	perRule = make([][]Finding, len(rules))
 	var syntaxRules, fileRules []int
 	var wg sync.WaitGroup
+	var syntaxErr error
 	for i, enabled := range rules {
 		switch {
 		case enabled.Rule.Visit != nil:
@@ -88,15 +98,21 @@ func runRules(ctx *Context, rules []EnabledRule) [][]Finding {
 	// only be used by one goroutine at a time.
 	if len(syntaxRules) > 0 {
 		wg.Go(func() {
+			defer recoverCrash(&syntaxErr)
 			start := time.Now()
 			runSyntaxRules(ctx, rules, syntaxRules, perRule)
 			timing.Span("syntax rules", time.Since(start))
 		})
 	}
+	// Wait for the syntax rules before raising a crash of another rule.
+	defer wg.Wait()
 	for i, enabled := range rules {
 		if enabled.Rule.Check != nil {
 			start := time.Now()
-			perRule[i] = enabled.Rule.Check(ctx, enabled.Options)
+			func() {
+				defer rethrow(enabled.Rule.Name, nil)
+				perRule[i] = enabled.Rule.Check(ctx, enabled.Options)
+			}()
 			timing.Span(enabled.Rule.Name, time.Since(start))
 		}
 	}
@@ -106,8 +122,11 @@ func runRules(ctx *Context, rules []EnabledRule) [][]Finding {
 		timing.Span("file rules", time.Since(start))
 	}
 	wg.Wait()
+	if syntaxErr != nil {
+		return nil, syntaxErr
+	}
 	timing.Mark("rules")
-	return perRule
+	return perRule, nil
 }
 
 // collectResults turns the findings (by rule index) that aren't suppressed
@@ -165,9 +184,16 @@ func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule []
 	ctx.Parallel(len(ctx.Files), func(fi int) {
 		file := ctx.Files[fi]
 		findings, reports := fileReports(file, len(indexes))
+		current := ""
+		defer func() {
+			if r := recover(); r != nil {
+				panic(asCrash(r, current, file))
+			}
+		}()
 		var visit func(node *ast.Node) bool
 		visit = func(node *ast.Node) bool {
 			for k, ri := range indexes {
+				current = rules[ri].Rule.Name
 				rules[ri].Rule.Visit(file, node, rules[ri].Options, reports[k])
 			}
 			node.ForEachChild(visit)
@@ -185,7 +211,10 @@ func runFileRules(ctx *Context, rules []EnabledRule, indexes []int, perRule [][]
 	ctx.ForEachFile(ctx.Files, func(file *File, ch *checker.Checker) {
 		findings, reports := fileReports(file, len(indexes))
 		for k, ri := range indexes {
-			rules[ri].Rule.CheckFile(file, ch, rules[ri].Options, reports[k])
+			func() {
+				defer rethrow(rules[ri].Rule.Name, file)
+				rules[ri].Rule.CheckFile(file, ch, rules[ri].Options, reports[k])
+			}()
 		}
 		perFile[file.Index] = findings
 	})

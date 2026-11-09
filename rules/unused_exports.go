@@ -390,7 +390,9 @@ func (u *exportUses) markChain(symbol *ast.Symbol, node *ast.Node, escapes bool)
 				}
 			}
 		}
-		if symbol.Flags&ast.SymbolFlagsAlias == 0 {
+		// The default of a module imported with esModuleInterop is an alias
+		// the checker makes up, without declarations or a target to resolve.
+		if symbol.Flags&ast.SymbolFlagsAlias == 0 || len(symbol.Declarations) == 0 {
 			return
 		}
 		symbol = u.ch.GetImmediateAliasedSymbol(symbol)
