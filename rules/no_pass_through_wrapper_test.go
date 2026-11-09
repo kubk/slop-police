@@ -163,6 +163,19 @@ export class Plain {
   }
   destroy() {}
 }
+
+export class Resource {
+  [Symbol.asyncDispose]() {
+    return this.close();
+  }
+  toString() {
+    return this.format();
+  }
+  async close() {}
+  format() {
+    return "";
+  }
+}
 `,
 		"types.ts": `type Key = "title" | "body";
 declare function translate(key: string, ...args: unknown[]): string;

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -20,8 +21,8 @@ import (
 //   - it implements or overrides a member declared outside the analyzed
 //     files, like a library's base class method that the library calls,
 //   - it is named in Pick<Class, "name">,
-//   - an instance is passed to a JSX attribute whose (structural) contextual
-//     type has a property with its name,
+//   - an instance is passed, returned, stored or asserted where a type (other
+//     than its class) with a property of its name is expected,
 //   - or find-all-references finds a reference outside class member names.
 func init() {
 	lint.Register(&lint.Rule{
@@ -115,11 +116,17 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 	})
 	phase("referenced members")
 
-	jsxFiles := filesWithUnusedCandidateClasses(ctx, candidates, used)
-	ctx.ForEachFile(jsxFiles, func(file *lint.File, ch *checker.Checker) {
-		collectContextuallyUsedJsxMembers(file, ch, used)
+	structuralFiles := filesWithUnusedCandidateClasses(ctx, candidates, used)
+	classNames := map[string]bool{}
+	for _, c := range candidates {
+		if name := c.node.Parent.Name(); name != nil && !used.has(c.key) {
+			classNames[name.Text()] = true
+		}
+	}
+	ctx.ForEachFile(structuralFiles, func(file *lint.File, ch *checker.Checker) {
+		collectStructurallyUsedMembers(file, ch, used, classNames)
 	})
-	phase(fmt.Sprintf("jsx members (%d files)", len(jsxFiles)))
+	phase(fmt.Sprintf("structural uses (%d files)", len(structuralFiles)))
 
 	var remaining []*methodCandidate
 	for _, c := range candidates {
@@ -152,7 +159,7 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 			continue
 		}
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
-			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier {
+			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) {
 				key := classMemberKey(node.Parent, node.Name().Text())
 				key.static = hasModifier(node, ast.KindStaticKeyword)
 				candidates = append(candidates, &methodCandidate{file, node, key})
@@ -160,6 +167,86 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 		})
 	}
 	return candidates
+}
+
+// conversionMethods are called by the language itself: JSON.stringify calls
+// toJSON, string conversion toString, number conversion valueOf, and await
+// calls then.
+var conversionMethods = map[string]bool{"toJSON": true, "toString": true, "valueOf": true, "then": true}
+
+// isProtocolMember reports whether the runtime calls the instance member
+// node: a conversion method, or the iterator methods of a class that is its
+// own iterator ([Symbol.iterator]() { return this }), which for...of calls.
+func isProtocolMember(node *ast.Node) bool {
+	if hasModifier(node, ast.KindStaticKeyword) {
+		return false
+	}
+	switch name := node.Name().Text(); {
+	case conversionMethods[name]:
+		return true
+	case name == "next" || name == "return" || name == "throw":
+		for _, member := range node.Parent.Members() {
+			if symbolName := wellKnownSymbolName(member.Name()); symbolName == "iterator" || symbolName == "asyncIterator" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// wellKnownSymbolName returns "iterator" for [Symbol.iterator], and so on,
+// or "" for other names.
+func wellKnownSymbolName(name *ast.Node) string {
+	if name == nil || name.Kind != ast.KindComputedPropertyName {
+		return ""
+	}
+	expression := name.AsComputedPropertyName().Expression
+	if expression.Kind != ast.KindPropertyAccessExpression || !ast.IsIdentifier(expression.Expression()) || expression.Expression().Text() != "Symbol" {
+		return ""
+	}
+	return expression.AsPropertyAccessExpression().Name().Text()
+}
+
+// customElementCallbacks are the members of a custom element (a class
+// extending HTMLElement) that the browser calls, by whether they're static.
+var customElementCallbacks = map[bool]map[string]bool{
+	false: {
+		"connectedCallback": true, "disconnectedCallback": true, "adoptedCallback": true, "attributeChangedCallback": true,
+		"connectedMoveCallback": true, "formAssociatedCallback": true, "formDisabledCallback": true, "formResetCallback": true,
+		"formStateRestoreCallback": true,
+	},
+	true: {"observedAttributes": true, "formAssociated": true},
+}
+
+// rpcBaseClasses are the Cloudflare Workers classes whose subclasses'
+// public methods other Workers call over RPC.
+var rpcBaseClasses = map[string]bool{"WorkerEntrypoint": true, "DurableObject": true, "RpcTarget": true, "WorkflowEntrypoint": true}
+
+// calledByRuntime reports, for a class extending library classes, which of
+// its members the runtime calls: a custom element's lifecycle callbacks, and
+// every public instance member of a Workers RPC class.
+func calledByRuntime(ctx *lint.Context, ch *checker.Checker, class *ast.Node) func(key memberKey) bool {
+	var customElement, rpc bool
+	visited := map[*ast.Symbol]bool{}
+	var visit func(symbol *ast.Symbol)
+	visit = func(symbol *ast.Symbol) {
+		if symbol == nil || visited[symbol] {
+			return
+		}
+		visited[symbol] = true
+		external := len(symbol.Declarations) > 0 && !ctx.IsAnalyzedPath(pathOf(symbol.Declarations[0]))
+		customElement = customElement || external && symbol.Name == "HTMLElement"
+		rpc = rpc || external && rpcBaseClasses[symbol.Name]
+		// Base types of generic classes are references: go through the
+		// declared type of their symbol.
+		for _, base := range ch.GetBaseTypes(ch.GetDeclaredTypeOfSymbol(symbol)) {
+			visit(base.Symbol())
+		}
+	}
+	visit(class.Symbol())
+	return func(key memberKey) bool {
+		return customElement && customElementCallbacks[key.static][key.name] || rpc && !key.static
+	}
 }
 
 // addInheritedMembers maps the members a class implements or overrides (as
@@ -189,12 +276,16 @@ func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membe
 	ctx.ForEachFile(files, func(file *lint.File, ch *checker.Checker) {
 		for class, classCandidates := range byFile[file] {
 			instance, static := inheritedProperties(ch, class, constructors)
+			runtime := calledByRuntime(ctx, ch, class)
 			for _, c := range classCandidates {
 				properties := instance
 				if c.key.static {
 					properties = static
 				}
 				mu.Lock()
+				if runtime(c.key) && !hasModifier(c.node, ast.KindPrivateKeyword) && !hasModifier(c.node, ast.KindProtectedKeyword) {
+					external = append(external, c.key)
+				}
 				for _, property := range properties[c.key.name] {
 					for _, declaration := range property.Declarations {
 						if ctx.IsAnalyzedPath(pathOf(declaration)) {
@@ -363,32 +454,65 @@ func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[st
 	})
 }
 
-// collectContextuallyUsedJsxMembers marks the members of a class instance
-// passed to a JSX attribute that the attribute's contextual type requires,
-// unless the contextual type is that class itself.
-func collectContextuallyUsedJsxMembers(file *lint.File, ch *checker.Checker, used *usage) {
+// collectStructurallyUsedMembers marks the members of a class instance that
+// a type it has to fit requires, unless that type is the class itself: the
+// instance is used through that type, which needn't be an interface the
+// class implements. Instances fit a type when they're passed as an argument
+// or a JSX attribute, returned, assigned or stored in a typed place, or
+// asserted to it with as or satisfies.
+//
+// Checking an expression for its type is slow, so the instance's class is
+// found from its symbols where possible. Only files that name a class with
+// unused members, which can narrow a value to it or cast it, also get their
+// other expressions checked.
+func collectStructurallyUsedMembers(file *lint.File, ch *checker.Checker, used *usage, classNames map[string]bool) {
+	namesClass := false
+	for name := range file.Source.GetNameTable() {
+		if classNames[name] {
+			namesClass = true
+			break
+		}
+	}
 	forEachNode(file.Source.AsNode(), func(node *ast.Node) {
-		if node.Kind != ast.KindJsxExpression || node.Parent.Kind != ast.KindJsxAttribute {
+		var expression *ast.Node
+		var target *checker.Type
+		switch {
+		case node.Kind == ast.KindAsExpression || node.Kind == ast.KindSatisfiesExpression:
+			// The outermost of x as unknown as T: x has to fit T.
+			if node.Parent.Kind == ast.KindAsExpression || node.Parent.Kind == ast.KindSatisfiesExpression || ast.IsConstTypeReference(node.Type()) {
+				return
+			}
+			expression = unwrapExpression(node)
+			target = ch.GetTypeFromTypeNode(node.Type())
+		case isContextuallyTypedPosition(node):
+			expression = node
+		default:
 			return
 		}
-		expression := node.AsJsxExpression().Expression
-		// The type of a function expression is the anonymous type of the
-		// function's own symbol (or anyFunctionType), never a class.
-		if expression == nil || expression.Kind == ast.KindArrowFunction || expression.Kind == ast.KindFunctionExpression {
-			return
+		class := instanceClass(ch, expression)
+		if class == nil && namesClass && mayBeInstance(expression) {
+			class = classNodeForType(ch.GetTypeAtLocation(expression))
 		}
-		class := classNodeForType(ch.GetTypeAtLocation(expression))
 		// A class whose candidates are all used has nothing left to mark.
 		if class == nil || !used.classHasUnused(class) {
 			return
 		}
-		contextualType := ch.GetContextualType(expression, checker.ContextFlagsNone)
-		if contextualType == nil || classNodeForType(contextualType) == class {
+		if target == nil {
+			target = ch.GetContextualType(expression, checker.ContextFlagsNone)
+		}
+		if target == nil {
 			return
 		}
 		required := map[string]bool{}
-		for _, property := range ch.GetPropertiesOfType(ch.GetApparentType(contextualType)) {
-			required[property.Name] = true
+		for _, t := range unionMembers(ch.GetNonNullableType(target)) {
+			// The members of the class and of its base classes are linked
+			// already.
+			if isClassOrAncestor(ch, classNodeForType(t), class) {
+				return
+			}
+			for _, property := range ch.GetPropertiesOfType(ch.GetApparentType(t)) {
+				required[property.Name] = true
+			}
 		}
 		for _, member := range class.Members() {
 			if isCheckedClassMember(member) && !hasModifier(member, ast.KindStaticKeyword) && member.Name().Kind == ast.KindIdentifier && required[member.Name().Text()] {
@@ -398,9 +522,113 @@ func collectContextuallyUsedJsxMembers(file *lint.File, ch *checker.Checker, use
 	})
 }
 
+// instanceClass returns the class of the instance that expression is, found
+// without checking the expression (which is slow): a new expression of the
+// class, this in it, or a variable, parameter or property whose type is the
+// class.
+func instanceClass(ch *checker.Checker, expression *ast.Node) *ast.Node {
+	if expression == nil {
+		return nil
+	}
+	switch expression.Kind {
+	case ast.KindParenthesizedExpression, ast.KindNonNullExpression:
+		return instanceClass(ch, expression.Expression())
+	case ast.KindNewExpression:
+		if symbol := resolveSymbol(ch, expression.Expression()); symbol != nil {
+			return findClassLikeDeclaration(symbol.Declarations)
+		}
+	case ast.KindThisKeyword:
+		// In static members, this is the class itself.
+		if container := ast.GetThisContainer(expression, false, false); container != nil && isClassLike(container.Parent) && !hasModifier(container, ast.KindStaticKeyword) {
+			return container.Parent
+		}
+	case ast.KindIdentifier, ast.KindPropertyAccessExpression:
+		symbol := resolveSymbol(ch, expression)
+		if symbol == nil || symbol.Flags&(ast.SymbolFlagsVariable|ast.SymbolFlagsProperty) == 0 {
+			return nil
+		}
+		return classNodeForType(ch.GetNonNullableType(ch.GetTypeOfSymbol(symbol)))
+	}
+	return nil
+}
+
+// mayBeInstance reports whether expression's value can be a class instance:
+// it isn't a function expression, whose type is the function's own, or a
+// literal.
+func mayBeInstance(expression *ast.Node) bool {
+	switch expression.Kind {
+	case ast.KindArrowFunction, ast.KindFunctionExpression, ast.KindStringLiteral, ast.KindNumericLiteral, ast.KindBigIntLiteral,
+		ast.KindNoSubstitutionTemplateLiteral, ast.KindTemplateExpression, ast.KindRegularExpressionLiteral,
+		ast.KindTrueKeyword, ast.KindFalseKeyword, ast.KindNullKeyword:
+		return false
+	}
+	return true
+}
+
+// isClassOrAncestor reports whether ancestor is class or a class it extends.
+func isClassOrAncestor(ch *checker.Checker, ancestor, class *ast.Node) bool {
+	if ancestor == nil {
+		return false
+	}
+	visited := map[*ast.Symbol]bool{}
+	var visit func(symbol *ast.Symbol) bool
+	visit = func(symbol *ast.Symbol) bool {
+		if symbol == nil || visited[symbol] {
+			return false
+		}
+		visited[symbol] = true
+		if findClassLikeDeclaration(symbol.Declarations) == ancestor {
+			return true
+		}
+		for _, base := range ch.GetBaseTypes(ch.GetDeclaredTypeOfSymbol(symbol)) {
+			if visit(base.Symbol()) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(class.Symbol())
+}
+
+// isContextuallyTypedPosition reports whether node is an expression whose
+// value goes where a type may be expected of it: an argument, a JSX
+// attribute, a return value (also of an arrow function), an initializer of a
+// variable, property or object literal property, an array element, or the
+// right side of an assignment.
+func isContextuallyTypedPosition(node *ast.Node) bool {
+	parent := node.Parent
+	if parent == nil || !ast.IsExpression(node) {
+		return false
+	}
+	switch parent.Kind {
+	case ast.KindCallExpression, ast.KindNewExpression:
+		return slices.Contains(parent.Arguments(), node)
+	case ast.KindJsxExpression:
+		return parent.Parent.Kind == ast.KindJsxAttribute
+	case ast.KindReturnStatement, ast.KindArrayLiteralExpression:
+		return true
+	case ast.KindArrowFunction:
+		return parent.Body() == node
+	case ast.KindVariableDeclaration, ast.KindPropertyDeclaration, ast.KindPropertyAssignment:
+		return parent.Initializer() == node
+	case ast.KindBinaryExpression:
+		binary := parent.AsBinaryExpression()
+		return binary.Right == node && binary.OperatorToken.Kind == ast.KindEqualsToken
+	}
+	return false
+}
+
+func unionMembers(t *checker.Type) []*checker.Type {
+	if t.Flags()&checker.TypeFlagsUnion != 0 {
+		return t.Types()
+	}
+	return []*checker.Type{t}
+}
+
 // filesWithUnusedCandidateClasses returns the files of projects whose program
 // contains a class with an unused candidate. A checker only produces classes
-// declared in its own program, so JSX attributes elsewhere cannot mark one.
+// declared in its own program, so instances can't be used structurally
+// elsewhere.
 func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*methodCandidate, used *usage) []*lint.File {
 	relevant := map[*lint.Project]bool{}
 	for _, c := range candidates {

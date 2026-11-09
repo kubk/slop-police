@@ -79,6 +79,55 @@ new Upper().write("a");
 			want: []string{"Method Upper.from is never used", "Method Upper.unused is never used"},
 		},
 		{
+			name: "members the runtime calls",
+			files: map[string]string{
+				"lib.d.ts": `
+interface HTMLElement { id: string }
+declare var HTMLElement: { prototype: HTMLElement; new (): HTMLElement };
+declare module "cloudflare:workers" {
+  export abstract class WorkerEntrypoint<Env = unknown> { env: Env }
+  export abstract class DurableObject<Env = unknown> { env: Env }
+}
+`,
+				"element.ts": `
+class Base extends HTMLElement {}
+class Clock extends Base {
+  static get observedAttributes() { return ["time"]; }
+  connectedCallback() {}
+  attributeChangedCallback() {}
+  unused() {}
+}
+customElements.define("x-clock", Clock);
+`,
+				"worker.ts": `
+import { WorkerEntrypoint, DurableObject } from "cloudflare:workers";
+export class Greeter extends WorkerEntrypoint {
+  greet(name: string) { return name; }
+  get version() { return 1; }
+  private helper() {}
+  static unused() {}
+}
+export class Counter extends DurableObject<{ KEY: string }> {
+  increment() { return 1; }
+}
+`,
+				"protocols.ts": `
+export class Url {
+  toJSON() { return ""; }
+  toString() { return ""; }
+  valueOf() { return 1; }
+  next() { return { done: true, value: undefined }; }
+}
+export class Lines {
+  [Symbol.iterator]() { return this; }
+  next() { return { done: true as const, value: undefined }; }
+  return() { return { done: true as const, value: undefined }; }
+}
+`,
+			},
+			want: []string{"Method Clock.unused is never used", "Method Url.next is never used", "Method Greeter.unused is never used"},
+		},
+		{
 			name: "static members read through a library's constructor type",
 			files: map[string]string{
 				"react.d.ts": `
@@ -188,6 +237,44 @@ const store = new Store();
 const view = <View store={store} />;
 `},
 			want: []string{"Method Store.unused is never used"},
+		},
+		{
+			name: "members required where an instance has to fit a type",
+			files: map[string]string{"fixture.ts": `
+interface Clock { now(): number }
+interface Memory { inject(): void }
+interface Transport { send(): void }
+interface Recorder { start(): void }
+
+class SystemClock { now() { return 1; } unused() {} }
+class LocalMemory { inject() {} unused() {} }
+class HttpTransport { send() {} unused() {} }
+class FakeRecorder { start() {} unused() {} }
+class Stored { now() { return 1; } unused() {} }
+
+function check(clock: Clock) { return clock.now(); }
+check(new SystemClock());
+
+function createMemory(): Memory { return new LocalMemory(); }
+createMemory().inject();
+
+const transports: Transport[] = [new HttpTransport()];
+transports[0]?.send();
+
+const recorder = new FakeRecorder() as unknown as Recorder;
+recorder.start();
+
+let clock: Clock | undefined;
+clock = new Stored();
+clock.now();
+`},
+			want: []string{
+				"Method SystemClock.unused is never used",
+				"Method LocalMemory.unused is never used",
+				"Method HttpTransport.unused is never used",
+				"Method FakeRecorder.unused is never used",
+				"Method Stored.unused is never used",
+			},
 		},
 		{
 			name: "members named by Pick",

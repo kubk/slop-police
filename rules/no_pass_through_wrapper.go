@@ -107,12 +107,16 @@ func isShapeRequired(ch *checker.Checker, declaration *ast.Node, fn checkedFunct
 	if !isClassLike(parent) || hasModifier(declaration, ast.KindStaticKeyword) {
 		return false
 	}
-	if hasModifier(declaration, ast.KindOverrideKeyword) {
+	// The runtime calls [Symbol.iterator](), toString() and the like.
+	if hasModifier(declaration, ast.KindOverrideKeyword) || wellKnownSymbolName(fn.Name) != "" {
 		return true
 	}
 	name, ok := staticName(fn.Name)
 	if !ok {
 		return false
+	}
+	if conversionMethods[name] {
+		return true
 	}
 	var inherited []*checker.Type
 	for _, typeNode := range implementedTypes(parent) {
