@@ -78,6 +78,26 @@ export default c;
 			},
 		},
 		{
+			name: "an export list is not a use of what it exports",
+			files: map[string]string{
+				"main.ts": `
+import { a } from "./lib.ts";
+export const all = [a];
+`,
+				"lib.ts": `
+const a = 1;
+const unused = 2;
+const local = 3;
+export { a, unused, local };
+console.log(local);
+`,
+			},
+			want: []locatedFinding{
+				{"lib.ts", 5, 13, "Export unused is never used"},
+				{"lib.ts", 5, 21, "Export local is only used in its own file"},
+			},
+		},
+		{
 			name: "barrels pass uses through and report their own unused re-exports",
 			files: map[string]string{
 				"main.ts": `

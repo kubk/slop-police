@@ -289,7 +289,8 @@ type exportUses struct {
 
 func (u *exportUses) collect(names map[string]bool) {
 	sf := u.file.Source
-	// Local names of imports: namespace and renamed imports are used by them.
+	// Local names of imports (namespace and renamed imports are used by them)
+	// and of what the file's export lists export.
 	local := map[string]bool{}
 	for _, statement := range sf.Statements.Nodes {
 		switch statement.Kind {
@@ -327,6 +328,8 @@ func (u *exportUses) collect(names map[string]bool) {
 				for _, d := range target.Declarations {
 					u.localTargets[keyOfDeclaration(d)] = c
 				}
+				// Its uses in the file are uses of the candidate.
+				local[target.Name] = true
 			}
 		}
 	}
@@ -377,7 +380,8 @@ func (u *exportUses) markChain(symbol *ast.Symbol, node *ast.Node, escapes bool)
 			if c := u.byDecl[key]; c != nil {
 				c.use(node)
 			}
-			if c := u.localTargets[key]; c != nil && !contains(d, node) {
+			// The candidate's own export specifier isn't a use.
+			if c := u.localTargets[key]; c != nil && !contains(d, node) && !slices.ContainsFunc(c.declarations, func(s *ast.Node) bool { return contains(s, node) }) {
 				c.usedInFile.Store(true)
 			}
 			if d.Kind == ast.KindSourceFile && escapes {
