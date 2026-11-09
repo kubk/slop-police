@@ -113,17 +113,34 @@ func checkUnusedExports(ctx *lint.Context, options lint.Options) []lint.Finding 
 			names[c.name] = true
 		}
 	}
-	// An entry point's export * exposes everything the module exports.
+	// A dynamic import uses any export of the module. An entry point's
+	// export * exposes everything the module exports, also through the
+	// module's own export *.
+	var exposed []*lint.File
+	visited := make([]bool, len(files))
 	for _, file := range files {
-		if live[file.Index] {
-			star := edges[file.Index].star
-			if checked[file.Index] {
-				star = nil
+		if !live[file.Index] {
+			continue
+		}
+		for _, path := range edges[file.Index].whole {
+			if used := wholeModule[path]; used != nil {
+				used.Store(true)
 			}
-			for _, path := range append(edges[file.Index].whole, star...) {
+		}
+		if !checked[file.Index] {
+			exposed = append(exposed, file)
+		}
+	}
+	for len(exposed) > 0 {
+		file := exposed[0]
+		exposed = exposed[1:]
+		for _, path := range edges[file.Index].star {
+			if target := byPath[path]; !visited[target.Index] {
+				visited[target.Index] = true
 				if used := wholeModule[path]; used != nil {
 					used.Store(true)
 				}
+				exposed = append(exposed, target)
 			}
 		}
 	}
@@ -168,7 +185,9 @@ func collectModuleEdges(file *lint.File, byPath map[tspath.Path]*lint.File) modu
 		if !resolved.IsResolved() {
 			continue
 		}
-		target := program.GetSourceFile(resolved.ResolvedFileName)
+		// Through a project reference, the import resolves to the referenced
+		// project's output, and the program has its source instead.
+		target := program.GetSourceFileForResolvedModule(resolved.ResolvedFileName)
 		if target == nil || byPath[target.Path()] == nil || target.Path() == file.Source.Path() {
 			continue
 		}
