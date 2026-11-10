@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Runs every time the orb wakes. Nothing needs reconnecting; just confirm that
+# what .agents/setup installed is still in place.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+export PATH="$PATH:/usr/local/go/bin"
+go version
+[ -x node_modules/.bin/oxfmt ] || {
+	echo "node_modules is missing: run .agents/setup" >&2
+	exit 1
+}

@@ -1,3 +1,4 @@
 /dist/
 /npm/slop-police/lib/typescript/
 /node_modules/
+.amp/portals/*

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb for slop-police: the Go toolchain go.mod asks for, the
+# pnpm dev dependencies (oxfmt, lefthook), warm Go module and build caches,
+# and the TypeScript API the plugin tests load. Safe to rerun: a warm run
+# downloads and builds nothing.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+step() {
+	if [ -n "${step_name:-}" ]; then
+		echo "<== $step_name: $((SECONDS - step_start))s"
+	fi
+	step_name=${1:-}
+	step_start=$SECONDS
+	if [ -n "$step_name" ]; then
+		echo "==> $step_name"
+	fi
+}
+
+step "Go toolchain"
+# The orb image ships Go in /usr/local/go. Without it, install the version
+# go.mod names; GOTOOLCHAIN=auto fetches a newer one later if go.mod moves on.
+if [ ! -x /usr/local/go/bin/go ]; then
+	version="$(sed -n 's/^go \([0-9][0-9.]*\).*/\1/p' go.mod)"
+	case "$version" in *.*.*) ;; *) version="$version.0" ;; esac
+	url="https://go.dev/dl/go${version}.linux-$(dpkg --print-architecture).tar.gz"
+	echo "downloading $url"
+	curl -fsSL "$url" -o /tmp/go.tar.gz
+	sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+	rm -f /tmp/go.tar.gz
+fi
+# Login shells (Amp and its supervised services) must find go and go-installed tools.
+marker="# slop-police: Go toolchain"
+if ! grep -Fqx "$marker" ~/.bash_profile 2>/dev/null; then
+	printf '\n%s\nexport PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"\n' "$marker" >>~/.bash_profile
+fi
+export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+go version
+
+step "pnpm dependencies"
+command -v pnpm >/dev/null || corepack enable
+pnpm install --frozen-lockfile
+
+step "Go modules"
+go mod download
+
+step "Go build cache (cold: about 4 minutes on 2 CPUs)"
+go build ./...
+go vet ./...
+go test -run '^$' ./...
+
+step "TypeScript API for the plugin tests"
+node scripts/build-typescript-api.mjs
+
+step
