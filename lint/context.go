@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 
@@ -45,13 +46,12 @@ type Project struct {
 	snapshot *project.Snapshot
 	files    []*File
 
-	// Checkers are taken from the project's checker pool and held for the
-	// whole run under per-checker request IDs, so that language service calls
-	// made with checkerCtx[i] use checkers[i] (and its warm caches).
-	checkersOnce sync.Once
-	checkers     []*checker.Checker
-	checkerCtx   []context.Context
-	checkerLocks []sync.Mutex
+	// The checkers are set while the project is in the batch being worked
+	// on (see forEachBatch), with the contexts to make language service
+	// calls on them and the functions that return them to the pool.
+	checkers   []*checker.Checker
+	checkerCtx []context.Context
+	releases   []func()
 }
 
 type File struct {
@@ -94,7 +94,10 @@ func newProjectSession(root string) *project.Session {
 			CurrentDirectory:   tspath.GetNormalizedAbsolutePath(root, ""),
 			DefaultLibraryPath: bundled.LibPath(),
 			PositionEncoding:   lsproto.PositionEncodingKindUTF8,
-			CheckerPoolOptions: project.CheckerPoolOptions{MaxCheckers: Workers + 1},
+			// A released checker is disposed at once: checkers are released
+			// when a batch of projects is done with (see forEachBatch), so
+			// that their state is collected before the next batch's is built.
+			CheckerPoolOptions: project.CheckerPoolOptions{MaxCheckers: Workers + 1, IdleTimeout: time.Nanosecond},
 		},
 	})
 }
@@ -231,55 +234,99 @@ func (c *Context) ProjectsContaining(sf *ast.SourceFile) []*Project {
 // association until its context is done.
 var runContext, _ = context.WithCancel(context.Background())
 
-func (c *Context) ensureCheckers(p *Project) {
-	p.checkersOnce.Do(func() {
-		count := max(1, min((len(p.files)+FilesPerChecker-1)/FilesPerChecker, Workers))
-		p.checkers = make([]*checker.Checker, count)
-		p.checkerCtx = make([]context.Context, count)
-		p.checkerLocks = make([]sync.Mutex, count)
-		for i := range count {
-			p.checkerCtx[i] = core.WithRequestID(runContext, fmt.Sprintf("slop-police:%s:%d", p.ConfigPath, i))
-			p.checkers[i], _ = p.Program.GetTypeChecker(p.checkerCtx[i])
-		}
-	})
+// checkerCount is how many checkers the project's analyzed files pay for.
+func (p *Project) checkerCount() int {
+	return max(1, min((len(p.files)+FilesPerChecker-1)/FilesPerChecker, Workers))
 }
 
-// ForEachFile runs fn for every file in parallel. Each file always goes to
-// the same checker of its project, and a checker is used by one goroutine at
-// a time.
+// takeCheckers takes the project's checkers from its checker pool, under
+// per-checker request IDs so that language service calls made with
+// checkerCtx[i] use checkers[i].
+func (c *Context) takeCheckers(p *Project) {
+	count := p.checkerCount()
+	p.checkers = make([]*checker.Checker, count)
+	p.releases = make([]func(), count)
+	p.checkerCtx = make([]context.Context, count)
+	for i := range count {
+		p.checkerCtx[i] = core.WithRequestID(runContext, fmt.Sprintf("slop-police:%s:%d", p.ConfigPath, i))
+		p.checkers[i], p.releases[i] = p.Program.GetTypeChecker(p.checkerCtx[i])
+	}
+}
+
+// releaseCheckers returns the project's checkers to its pool, which disposes
+// them (see newProjectSession), so that their state can be collected.
+func (c *Context) releaseCheckers(p *Project) {
+	for _, release := range p.releases {
+		release()
+	}
+	p.checkers, p.releases, p.checkerCtx = nil, nil, nil
+}
+
+// forEachBatch runs fn for batches of the projects, with their checkers
+// taken before and released after. A batch has as many projects as it takes
+// to have Workers checkers, so that the parallel work in fn keeps every
+// worker busy while only about Workers checkers' state is live at a time,
+// however many projects there are. The batches run one after another.
+func (c *Context) forEachBatch(projects []*Project, fn func(batch []*Project)) {
+	for start := 0; start < len(projects); {
+		end, checkers := start, 0
+		for end < len(projects) && checkers < Workers {
+			checkers += projects[end].checkerCount()
+			end++
+		}
+		batch := projects[start:end]
+		start = end
+		for _, p := range batch {
+			c.takeCheckers(p)
+		}
+		func() {
+			defer func() {
+				for _, p := range batch {
+					c.releaseCheckers(p)
+				}
+			}()
+			fn(batch)
+		}()
+	}
+}
+
+// ForEachFile runs fn for every file in parallel, projects in batches (see
+// forEachBatch). Each file of a project goes to the same checker as its
+// neighbours, and a checker is used by one goroutine at a time.
 func (c *Context) ForEachFile(files []*File, fn func(f *File, ch *checker.Checker)) {
+	byProject := map[*Project][][]*File{} // files by checker index
+	var projects []*Project
+	for _, f := range files {
+		p := f.Project
+		if byProject[p] == nil {
+			byProject[p] = make([][]*File, p.checkerCount())
+			projects = append(projects, p)
+		}
+		i := (f.projectIndex / chunkSize) % len(byProject[p])
+		byProject[p][i] = append(byProject[p][i], f)
+	}
 	type group struct {
 		project *Project
 		index   int
-		files   []*File
 	}
-	type key struct {
-		project *Project
-		index   int
-	}
-	groupIndex := map[key]int{}
-	var groups []*group
-	for _, f := range files {
-		c.ensureCheckers(f.Project)
-		k := key{f.Project, (f.projectIndex / chunkSize) % len(f.Project.checkers)}
-		i, ok := groupIndex[k]
-		if !ok {
-			i = len(groups)
-			groupIndex[k] = i
-			groups = append(groups, &group{project: k.project, index: k.index})
+	c.forEachBatch(projects, func(batch []*Project) {
+		var groups []group
+		for _, p := range batch {
+			for i, files := range byProject[p] {
+				if len(files) > 0 {
+					groups = append(groups, group{p, i})
+				}
+			}
 		}
-		groups[i].files = append(groups[i].files, f)
-	}
-	c.Parallel(len(groups), func(i int) {
-		g := groups[i]
-		g.project.checkerLocks[g.index].Lock()
-		defer g.project.checkerLocks[g.index].Unlock()
-		for _, f := range g.files {
-			func() {
-				defer rethrow("", f)
-				fn(f, g.project.checkers[g.index])
-			}()
-		}
+		c.Parallel(len(groups), func(gi int) {
+			g := groups[gi]
+			for _, f := range byProject[g.project][g.index] {
+				func() {
+					defer rethrow("", f)
+					fn(f, g.project.checkers[g.index])
+				}()
+			}
+		})
 	})
 }
 
@@ -320,7 +367,7 @@ type ReferenceQuery struct {
 // getReferencedSymbolsForNode (find-all-references over all source files of
 // the project's program, on one checker) and reports whether accept takes any
 // reference node of the query (by its index). Queries run in parallel on the
-// project's checkers.
+// project's checkers, projects in batches (see forEachBatch).
 func (c *Context) AnyReference(queries []ReferenceQuery, accept func(query int, ref *ast.Node) bool) []bool {
 	byProject := map[*Project][]int{}
 	var projects []*Project
@@ -329,7 +376,6 @@ func (c *Context) AnyReference(queries []ReferenceQuery, accept func(query int, 
 			projects = append(projects, q.Project)
 		}
 		byProject[q.Project] = append(byProject[q.Project], i)
-		c.ensureCheckers(q.Project)
 	}
 	// Find-all-references looks up every file's name table. Building them is
 	// a pure, cached computation; doing it up front runs it in parallel.
@@ -344,25 +390,25 @@ func (c *Context) AnyReference(queries []ReferenceQuery, accept func(query int, 
 		index   int
 		next    *atomic.Int64
 	}
-	var workers []worker
-	for _, p := range projects {
-		next := &atomic.Int64{}
-		for i := range min(len(p.checkers), len(byProject[p])) {
-			workers = append(workers, worker{p, i, next})
-		}
-	}
 	found := make([]bool, len(queries))
-	c.Parallel(len(workers), func(wi int) {
-		w := workers[wi]
-		w.project.checkerLocks[w.index].Lock()
-		defer w.project.checkerLocks[w.index].Unlock()
-		service := ls.NewLanguageService(w.project.project.ID(), w.project.Program, w.project.snapshot, "")
-		indexes := byProject[w.project]
-		for i := int(w.next.Add(1) - 1); i < len(indexes); i = int(w.next.Add(1) - 1) {
-			q := queries[indexes[i]]
-			entries := service.GetReferencedSymbolsForNode(w.project.checkerCtx[w.index], q.Position, q.Node, w.project.Program.GetSourceFiles())
-			found[indexes[i]] = anyAccepted(entries, func(ref *ast.Node) bool { return accept(indexes[i], ref) })
+	c.forEachBatch(projects, func(batch []*Project) {
+		var workers []worker
+		for _, p := range batch {
+			next := &atomic.Int64{}
+			for i := range min(len(p.checkers), len(byProject[p])) {
+				workers = append(workers, worker{p, i, next})
+			}
 		}
+		c.Parallel(len(workers), func(wi int) {
+			w := workers[wi]
+			service := ls.NewLanguageService(w.project.project.ID(), w.project.Program, w.project.snapshot, "")
+			indexes := byProject[w.project]
+			for i := int(w.next.Add(1) - 1); i < len(indexes); i = int(w.next.Add(1) - 1) {
+				q := queries[indexes[i]]
+				entries := service.GetReferencedSymbolsForNode(w.project.checkerCtx[w.index], q.Position, q.Node, w.project.Program.GetSourceFiles())
+				found[indexes[i]] = anyAccepted(entries, func(ref *ast.Node) bool { return accept(indexes[i], ref) })
+			}
+		})
 	})
 	return found
 }
