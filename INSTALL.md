@@ -52,7 +52,7 @@ Put one config at the repository root, even in a monorepo: usages are counted ac
 
 Tests are entry points already. An entry's own exports aren't checked, and neither are the members of the classes it exports, so don't list a file that something else already imports.
 
-**`rules`**: every built-in rule is already on as an error. Keep them at their defaults.
+**`rules`**: every built-in rule is already on as an error, except `unused-methods`, which is slow on big repositories. Keep them at their defaults.
 
 ## 4. Run it and sort the findings
 
@@ -62,7 +62,7 @@ Go through the findings until only real code is left:
 
 - **File is never imported from an entry point**: find out what loads the file. If something does (a script, a tool config, a framework convention), add it to `entry`. If nothing does, it's dead code.
 - **Findings in generated or vendored code**: add those paths to `ignore`.
-- **Everything else is a real finding.** Don't turn rules off, raise thresholds, widen `ignore` or add `// slop-police-ignore` comments to make the run pass. A `// slop-police-ignore <rule> -- <reason>` comment fits only code used in a way static analysis can't see, like a method called from the devtools console. Mention each one in your report.
+- **Everything else is a real finding.** Don't turn rules off, raise thresholds, widen `ignore` or add `// slop-police-ignore` comments to make the run pass. A `// slop-police-ignore <rule> -- <reason>` comment fits only code used in a way static analysis can't see, like an export that another tool loads by name. Mention each one in your report.
 
 ## 5. Add it to the lint setup
 

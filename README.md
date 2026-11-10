@@ -184,6 +184,12 @@ class Store {
 new Store().load()
 ```
 
+It's the only built-in rule that is off by default: on a big monorepo it takes most of the run's time and memory. Turn it on in [`rules`](#configuration):
+
+```json
+"rules": { "unused-methods": "error" }
+```
+
 ## Configuration
 
 Put a `slop-police.json` in the directory you run it from:
@@ -195,11 +201,11 @@ Put a `slop-police.json` in the directory you run it from:
 }
 ```
 
-- `projects`: tsconfig files to analyze. Usages are counted across all of them, so a method used only by another package still counts as used.
+- `projects`: tsconfig files to analyze. Usages are counted across all of them, so an export used only by another package still counts as used.
 - `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
 - `entry`: glob patterns for the files that something outside the analyzed code loads, like `src/main.tsx` or a package's `src/index.ts`. With it, `unused-exports` also reports files that nothing imports from them. What they export is public API: its methods, getters, wrappers, type aliases, enum members and object keys aren't reported.
-- `rules`: you usually don't need it, since every built-in rule is already on as an error. It's for rule options, like `no-duplicate-code`'s `minLines`, and for turning on plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
+- `rules`: you usually don't need it, since every built-in rule except [`unused-methods`](#unused-methods) is already on as an error. It's for rule options, like `no-duplicate-code`'s `minLines`, and for turning on `unused-methods` and plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 ## CI
@@ -319,9 +325,10 @@ Plugins work only through the npm launcher (`npx slop-police`).
 A `// slop-police-ignore` comment directly above a statement, class member or object property silences findings in it, including everything nested inside. List rule names to silence only those, and add a reason after `--`:
 
 ```ts
-class Store {
-  // slop-police-ignore unused-methods -- called from the devtools console
-  debug() {}
+export const links = {
+  docs: '/docs',
+  // slop-police-ignore unused-object-keys -- read by the support widget
+  help: '/help',
 }
 
 // slop-police-ignore
@@ -331,11 +338,11 @@ export const legacyLinks = { a: '/a', b: '/b' }
 The `unused-ignore` rule reports ignore comments that silence nothing, either because the code they covered was fixed or because they name a rule that doesn't exist:
 
 ```ts
-class Store {
-  // slop-police-ignore unused-methods -- Ignore comment for unused-methods silences nothing
-  load() {}
+const links = {
+  // slop-police-ignore unused-object-keys -- Ignore comment for unused-object-keys silences nothing
+  docs: '/docs',
 }
-new Store().load()
+open(links.docs)
 ```
 
 ## Comparison with other tools

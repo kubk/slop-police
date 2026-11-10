@@ -177,15 +177,26 @@ func TestDefaultRules(t *testing.T) {
 			t.Errorf("%s: got severity %s, options %v", rule.Rule.Name, rule.Severity, rule.Options)
 		}
 	}
-	config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "rules": {"unused-methods": "off", "no-duplicate-code": ["warn", {"minLines": 6}]}}`), nil)
-	if err != nil {
-		t.Fatal(err)
+	rulesOf := func(rules string) map[string]string {
+		config, err := lint.ParseConfig([]byte(`{"projects": ["tsconfig.json"], "rules": `+rules+`}`), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, rule := range config.Rules {
+			got[rule.Rule.Name] = fmt.Sprint(rule.Severity, " ", rule.Options["minLines"])
+		}
+		return got
 	}
-	got := map[string]string{}
-	for _, rule := range config.Rules {
-		got[rule.Rule.Name] = fmt.Sprint(rule.Severity, " ", rule.Options["minLines"])
+	got := rulesOf(`{"unused-exports": "off", "no-duplicate-code": ["warn", {"minLines": 6}]}`)
+	if _, ok := got["unused-exports"]; ok || len(got) != len(all)-1 || got["no-duplicate-code"] != "warn 6" || got["unused-object-keys"] != "error <nil>" {
+		t.Errorf("got %v", got)
 	}
-	if _, ok := got["unused-methods"]; ok || len(got) != len(all)-1 || got["no-duplicate-code"] != "warn 6" || got["unused-object-keys"] != "error <nil>" {
+	// An optional rule runs only when listed.
+	if _, ok := got["unused-methods"]; ok {
+		t.Errorf("unused-methods runs by default: %v", got)
+	}
+	if got := rulesOf(`{"unused-methods": "warn"}`); len(got) != len(all)+1 || got["unused-methods"] != "warn <nil>" {
 		t.Errorf("got %v", got)
 	}
 }

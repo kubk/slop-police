@@ -24,10 +24,14 @@ import (
 //   - an instance is passed, returned, stored or asserted where a type (other
 //     than its class) with a property of its name is expected,
 //   - or find-all-references finds a reference outside class member names.
+//
+// It is optional: it takes most of a run's time and memory on a big
+// repository, where it resolves every reference to every class member.
 func init() {
 	lint.Register(&lint.Rule{
 		Name:           "unused-methods",
 		DefaultOptions: lint.Options{"includePrivate": false, "includeProtected": false},
+		Optional:       true,
 		Check:          checkUnusedMethods,
 	})
 }

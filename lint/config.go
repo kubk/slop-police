@@ -107,13 +107,13 @@ func ParseConfig(data []byte, pluginRules []*Rule) (*Config, error) {
 	if err := unmarshalOptional(raw["rules"], &entries); err != nil {
 		return nil, configErrorf(`"rules" must be an object`)
 	}
-	// Built-in rules run as errors unless the config changes them. Plugin
-	// rules run only when listed.
+	// Built-in rules run as errors unless the config changes them. Optional
+	// and plugin rules run only when listed.
 	if entries == nil {
 		entries = map[string]json.RawMessage{}
 	}
-	for name := range registry {
-		if _, ok := entries[name]; !ok {
+	for name, rule := range registry {
+		if _, ok := entries[name]; !ok && !rule.Optional {
 			entries[name] = json.RawMessage(`"error"`)
 		}
 	}

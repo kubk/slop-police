@@ -137,12 +137,31 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
 
      Small repositories are back where 0.3.15 had them: memo-card takes 1.04 GB and 0.88 s, and 0.81 GB and 0.95 s with `SLOP_POLICE_MEMORY_GB=0.5`. Repositories between 1.5 GB and the budget take more memory than on 0.3.15, since the GC never starts (vinext 2.94 → 4.13 GB). blume, vinext and hyperframes were 16–25% faster for it in this session, but cf's times differ by more than that between identical runs. An 8 GB budget on the 16 GB machine lost to 0.3.15 in both memory and time on most of the big repositories (workers-sdk: 9.0 GB and 18.9 s), probably because the machine starts to compress and swap.
 
+   - **0.3.18 turns `unused-methods` off by default.** The rule resolves every reference to every class member, in four passes over the projects, and that was most of a run's time on the big repositories and 0.7–2.8 GB of their peak. It is an optional rule now (`Optional` in `lint.Rule`): it runs only when the config lists it, as in `"rules": { "unused-methods": "error" }`. 0.3.17 with every rule against the 0.3.18 default, with the default budget of 4 GB:
+
+     | Repository      | Peak, GB    | Time, s     | Findings    |
+     | --------------- | ----------- | ----------- | ----------- |
+     | video-shotcraft | 0.55 → 0.55 | 0.32 → 0.31 | 181 → 181   |
+     | vite            | 0.62 → 0.47 | 0.60 → 0.36 | 99 → 92     |
+     | blume           | 1.70 → 1.40 | 1.27 → 0.79 | 223 → 223   |
+     | cf              | 2.10 → 2.07 | 2.30 → 2.19 | 101 → 101   |
+     | vinext          | 4.11 → 3.10 | 3.16 → 2.39 | 407 → 399   |
+     | hyperframes     | 4.37 → 3.33 | 4.01 → 2.65 | 1024 → 1020 |
+     | workers-sdk     | 6.22 → 4.77 | 11.4 → 7.00 | 1171 → 1111 |
+     | tldraw          | 5.27 → 3.33 | 7.68 → 2.88 | 1035 → 992  |
+     | cloudflare-os   | 6.58 → 3.74 | 24.5 → 8.92 | 1162 → 1148 |
+     | rakazo          | 5.79 → 5.14 | 14.8 → 5.90 | 1116 → 1107 |
+     | openbot         | 7.32 → 5.80 | 57.1 → 15.8 | 3106 → 3064 |
+     | qwen-code       | 8.53 → 7.17 | 35.9 → 11.3 | 4993 → 4929 |
+
+     The findings that went away are the rule's own.
+
    - **Still to look at:**
-     - Releasing checkers doubles openbot's time. Ideas: start a pass from the batch that the pass before ended with, whose checkers are still there, or merge the passes of `unused-methods`.
+     - With `unused-methods` on, releasing checkers doubles openbot's time. Ideas: start a pass from the batch that the pass before ended with, whose checkers are still there, or merge the rule's passes.
      - Runs in parallel each spend a quarter of the machine before they start saving. Give them a `SLOP_POLICE_MEMORY_GB`.
      - Reading the memory on Linux (`/proc/meminfo` and the cgroup limits) has a test for the parsing, but wasn't run on Linux.
      - The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.
-2. **Speed on big repos:** 17–21 s for openbot, cloudflare-os and qwen-code. Most of it is `unused-methods`: find-references and structural uses.
+2. **Speed on big repos:** with every rule, 24–57 s for openbot, cloudflare-os and qwen-code on 0.3.17. Most of it is `unused-methods` (find-references and structural uses), which is off by default since 0.3.18: see the table above. Of the 9–16 s that are left, most is `unused-exports` resolving the uses of exports (9 of openbot's 16 s).
 3. **`no-pass-through-getter`** reports getters that keep a mutable `#field` read-only from outside (qwen 64, openbot 34, cloudflare-os ~14), getters with a setter, and `override` getters. Replacing these with a field would make it writable, so maintainers won't accept them. Idea: skip a getter when the class assigns the field outside the constructor, or has a setter of the same name.
 4. **`no-pass-through-wrapper`** still reports these, by design or by gap:
    - wrappers over module-private state, like `const byId = new Map(); export function get(id) { return byId.get(id) }`. That's inconsistent with the `this.items.get()` exemption.

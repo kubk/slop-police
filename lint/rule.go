@@ -47,6 +47,9 @@ type Report func(node *ast.Node, message string)
 type Rule struct {
 	Name           string
 	DefaultOptions Options // also the options the config may set, with their types
+	// Optional rules run only when the config lists them, like plugin rules.
+	// The other built-in rules run as errors unless the config changes them.
+	Optional bool
 
 	Visit     func(file *File, node *ast.Node, options Options, report Report)
 	CheckFile func(file *File, ch *checker.Checker, options Options, report Report)
