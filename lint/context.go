@@ -86,6 +86,10 @@ type Context struct {
 	HasEntries bool
 
 	filesByPath map[tspath.Path]*File
+
+	moduleObjectsOnce     sync.Once
+	moduleObjectExports   map[tspath.Path]bool // see HasModuleObjectValue
+	moduleObjectReexports map[tspath.Path]bool // see IsReexportedByModuleObjectValue
 }
 
 // newProjectSession creates a project session for root, which becomes its

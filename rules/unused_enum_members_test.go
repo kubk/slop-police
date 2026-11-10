@@ -58,6 +58,33 @@ export { Renamed as Alias };
 			},
 		},
 		{
+			name: "enums read from a module object that is a value",
+			files: map[string]string{
+				"status.ts": "export enum Status { Active, Unused }\n",
+				"barrel.ts": `export { Status } from "./status.ts";`,
+				"mode.ts":   "export enum Mode { Light, Dark }\n",
+				"view.ts": `
+import { Mode } from "./mode.ts";
+export async function load(theme: { Dark: number }) {
+  const { Status } = await import("./barrel.ts");
+  return [Status.Active, Mode.Light, theme.Dark];
+}
+`,
+			},
+			want: []finding{{1, "Enum member Mode.Dark is never used"}, {1, "Enum member Status.Unused is never used"}},
+		},
+		{
+			name: "enums read from a namespace that is a value",
+			files: map[string]string{"shapes.ts": `
+namespace Shapes {
+  export enum Kind { Circle, Square }
+}
+const shapes = Shapes;
+export const kind = shapes.Kind.Circle;
+`},
+			want: []finding{{3, "Enum member Kind.Square is never used"}},
+		},
+		{
 			name: "uses in tests count, enums in tests aren't checked",
 			files: map[string]string{
 				"mode.ts": "export enum Mode { Light, Dark }\n",

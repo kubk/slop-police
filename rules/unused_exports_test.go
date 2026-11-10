@@ -225,6 +225,34 @@ export type Member = import("./member.ts").Used;
 			},
 		},
 		{
+			name: "exports read from a module object that is a value",
+			files: map[string]string{
+				"main.ts": `
+import * as stored from "./stored.ts";
+import { KEY } from "./keys.ts";
+export async function load(user: { fromValue: number; unused: number }, table: Record<string, number>) {
+  const barrel = await import("./barrel.ts");
+  const { nested } = await import("./outer.ts");
+  const lib = stored;
+  return [barrel.viaStar, nested.fromNested, lib.fromStored, user.fromValue, user.unused, table[KEY]];
+}
+`,
+				"barrel.ts":      `export * from "./leaf.ts";`,
+				"leaf.ts":        "export const viaStar = 1;\nexport const unused = 2;\n",
+				"outer.ts":       `export * as nested from "./nested.ts";`,
+				"nested.ts":      "export const fromNested = 1;\nexport const fromValue = 2;\n",
+				"stored.ts":      `export * from "./stored-leaf.ts";`,
+				"stored-leaf.ts": "export const fromStored = 1;\nexport const notRead = 2;\n",
+				"keys.ts":        "export const KEY = \"a\";\nexport const OTHER = \"b\";\n",
+			},
+			want: []locatedFinding{
+				{"keys.ts", 2, 14, "Export OTHER is never used"},
+				{"leaf.ts", 2, 14, "Export unused is never used"},
+				{"nested.ts", 2, 14, "Export fromValue is never used"},
+				{"stored-leaf.ts", 2, 14, "Export notRead is never used"},
+			},
+		},
+		{
 			name: "uses in tests count, exports of tests aren't checked",
 			files: map[string]string{
 				"lib.ts": "export const tested = 1;\nexport const untested = 2;\n",

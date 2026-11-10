@@ -156,12 +156,34 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
 
      The findings that went away are the rule's own.
 
+   - **0.3.19 stopped checking types that the rules don't need.** `unused-exports`, `unused-object-keys` and `unused-enum-members` ask the checker for the symbol of every identifier named like one of their candidates. For a plain name the checker answers from scopes and imports. For a member of a value, as in `user.name`, it has to work out the type of `user`, and with thousands of export names in a repository that type-checked a large part of it: on openbot, 4% of the names that `unused-exports` resolved took 98% of its time. Such a member is a top-level declaration only when the value is a module object, like the result of `import()` or a namespace that was passed on. So the rules now skip the members of values, except the names that a module object used as a value can have. `HasModuleObjectValue` in `lint/modules.go` finds those objects from the syntax, and `isValueMember` in `rules/astutil.go` is the check. Members of namespaces and enums (`ns.name`, `Enum.A`) are resolved as before. 0.3.18 against 0.3.19, with the same findings on every repository:
+
+     | Repository      | Peak, GB    | Time, s     |
+     | --------------- | ----------- | ----------- |
+     | video-shotcraft | 0.55 → 0.54 | 0.31 → 0.29 |
+     | vite            | 0.47 → 0.46 | 0.38 → 0.34 |
+     | blume           | 1.40 → 0.94 | 0.79 → 0.66 |
+     | cf              | 2.06 → 0.93 | 2.22 → 0.90 |
+     | vinext          | 3.10 → 3.07 | 2.41 → 2.35 |
+     | hyperframes     | 3.33 → 3.11 | 2.49 → 2.33 |
+     | workers-sdk     | 4.76 → 4.62 | 6.37 → 5.56 |
+     | tldraw          | 3.34 → 3.15 | 2.85 → 2.61 |
+     | cloudflare-os   | 3.74 → 2.45 | 7.94 → 4.53 |
+     | rakazo          | 5.11 → 4.70 | 5.34 → 4.49 |
+     | openbot         | 5.83 → 4.30 | 14.4 → 4.20 |
+     | qwen-code       | 7.27 → 7.12 | 11.1 → 8.67 |
+
+     memo-card went from 1.26 GB and 1.04 s on 0.3.16 to 0.81 GB and 0.59 s.
+
    - **Still to look at:**
      - With `unused-methods` on, releasing checkers doubles openbot's time. Ideas: start a pass from the batch that the pass before ended with, whose checkers are still there, or merge the rule's passes.
      - Runs in parallel each spend a quarter of the machine before they start saving. Give them a `SLOP_POLICE_MEMORY_GB`.
      - Reading the memory on Linux (`/proc/meminfo` and the cgroup limits) has a test for the parsing, but wasn't run on Linux.
      - The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.
-2. **Speed on big repos:** with every rule, 24–57 s for openbot, cloudflare-os and qwen-code on 0.3.17. Most of it is `unused-methods` (find-references and structural uses), which is off by default since 0.3.18: see the table above. Of the 9–16 s that are left, most is `unused-exports` resolving the uses of exports (9 of openbot's 16 s).
+2. **Speed on big repos:** with every rule, 24–57 s for openbot, cloudflare-os and qwen-code on 0.3.17. Most of it was `unused-methods` (find-references and structural uses), which is off by default since 0.3.18, and then `unused-exports` checking the types of values, which 0.3.19 stopped: see the tables above. What is left of the 4–9 s:
+   - Loading the programs: 2–6 s on the big repositories, and nearly all of workers-sdk's 5.6 s.
+   - `no-duplicate-code`: 0.8 s on openbot, 1.3–2.1 s on qwen-code.
+   - Members of values that still need types. A file that a module object used as a value re-exports with `export *` has its export names checked everywhere. rakazo's `packages/core/src/index.ts` is loaded with `import()` in tests and has `export * from "./display-name.js"`, which exports `displayName`, so every `user.displayName` is type-checked (1 s of CPU). That is how a use like `(await import("@rakazo/core")).displayName` is told from the others. The names of a module whose namespace is used as a value are checked too, although the module ends up used whole (rakazo's `rpc.ts`, through a `typeof` of its namespace in a test, 0.6 s of CPU). Resolving the namespace imports before the rest would settle that.
 3. **`no-pass-through-getter`** reports getters that keep a mutable `#field` read-only from outside (qwen 64, openbot 34, cloudflare-os ~14), getters with a setter, and `override` getters. Replacing these with a field would make it writable, so maintainers won't accept them. Idea: skip a getter when the class assigns the field outside the constructor, or has a setter of the same name.
 4. **`no-pass-through-wrapper`** still reports these, by design or by gap:
    - wrappers over module-private state, like `const byId = new Map(); export function get(id) { return byId.get(id) }`. That's inconsistent with the `this.items.get()` exemption.

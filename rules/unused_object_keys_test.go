@@ -50,6 +50,23 @@ export const all = [styles["a"], b, s.styles.c, styles?.d];
 			want: []string{"styles.unused is never read"},
 		},
 		{
+			name: "objects read from a module object that is a value",
+			files: map[string]string{
+				"styles.ts": `
+export const styles = { a: "a", unused: "b" };
+export const local = { a: "a", unused: "b" };
+`,
+				"view.ts": `
+import { local } from "./styles.ts";
+export async function load(theme: { local: { unused: string } }) {
+  const module = await import("./styles.ts");
+  return [module.styles.a, local.a, theme.local.unused];
+}
+`,
+			},
+			want: []string{"styles.unused is never read", "local.unused is never read"},
+		},
+		{
 			name: "non-static use reads every key",
 			files: map[string]string{"objects.ts": `
 type Outcome = "a" | "b";

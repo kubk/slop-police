@@ -154,9 +154,17 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			liveFiles = append(liveFiles, file)
 		}
 	}
+	// The candidates of a module that is used whole are used whatever is read
+	// from its object.
+	objectNames := moduleObjectAliases(ctx)
+	for _, c := range candidates {
+		if ctx.HasModuleObjectValue(c.file) && !wholeModule[c.file.Source.Path()].Load() {
+			objectNames[c.name] = true
+		}
+	}
 	ctx.ForEachFile(liveFiles, func(file *lint.File, ch *checker.Checker) {
 		u := &exportUses{ch: ch, file: file, byDecl: byDecl, wholeModule: wholeModule, exportsEscape: !checked[file.Index]}
-		u.collect(names)
+		u.collect(names, objectNames)
 	})
 	phase("uses")
 
@@ -178,15 +186,8 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 
 func collectModuleEdges(file *lint.File, byPath map[tspath.Path]*lint.File) moduleEdges {
 	var edges moduleEdges
-	program := file.Project.Program
 	for _, module := range file.Source.Imports() {
-		resolved := program.GetResolvedModuleFromModuleSpecifier(file.Source, module)
-		if !resolved.IsResolved() {
-			continue
-		}
-		// Through a project reference, the import resolves to the referenced
-		// project's output, and the program has its source instead.
-		target := program.GetSourceFileForResolvedModule(resolved.ResolvedFileName)
+		target := file.ImportedFile(module)
 		if target == nil || byPath[target.Path()] == nil || target.Path() == file.Source.Path() {
 			continue
 		}
@@ -305,7 +306,10 @@ type exportUses struct {
 	localTargets map[declKey]*exportCandidate
 }
 
-func (u *exportUses) collect(names map[string]bool) {
+// collect marks the candidates that the file uses. names has the names of
+// all candidates, and objectNames the ones that may be read as members of a
+// value (see isValueMember).
+func (u *exportUses) collect(names, objectNames map[string]bool) {
 	sf := u.file.Source
 	// Local names of imports (namespace and renamed imports are used by them)
 	// and of what the file's export lists export.
@@ -383,7 +387,10 @@ func (u *exportUses) collect(names map[string]bool) {
 		if !names[node.Text()] && !local[node.Text()] || ast.IsDeclarationName(node) {
 			return
 		}
-		u.markChain(u.ch.GetSymbolAtLocation(node), node, !isMemberAccessTarget(node))
+		if !objectNames[node.Text()] && isValueMember(u.ch, node) {
+			return
+		}
+		u.markChain(u.ch.GetSymbolAtLocation(node), node, !lint.IsNamespaceOfMember(node))
 	})
 }
 
@@ -434,17 +441,4 @@ func (c *exportCandidate) use(node *ast.Node) {
 
 func contains(outer, node *ast.Node) bool {
 	return pathOf(outer) == pathOf(node) && outer.Pos() <= node.Pos() && node.End() <= outer.End()
-}
-
-// isMemberAccessTarget reports whether node is the namespace in a member
-// access: ns.member in an expression or a type.
-func isMemberAccessTarget(node *ast.Node) bool {
-	parent := node.Parent
-	switch parent.Kind {
-	case ast.KindPropertyAccessExpression:
-		return parent.Expression() == node
-	case ast.KindQualifiedName:
-		return parent.AsQualifiedName().Left == node
-	}
-	return false
 }

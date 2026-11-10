@@ -38,6 +38,9 @@ func checkUnusedEnumMembers(ctx *lint.Context, _ lint.Options) []lint.Finding {
 	}
 	byMember := map[declKey]memberRef{}
 	names := map[string]bool{}
+	// The names that may be read as members of a value (see isValueMember):
+	// those of the enums that a module object or a namespace has.
+	objectNames := moduleObjectAliases(ctx)
 	for _, file := range ctx.Files {
 		if file.IsTest {
 			continue
@@ -50,11 +53,14 @@ func checkUnusedEnumMembers(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			c := &enumCandidate{file: file, name: node.Name().Text(), members: members, used: make([]atomic.Bool, len(members))}
 			candidates = append(candidates, c)
 			byEnum[keyOfDeclaration(node)] = c
+			inObject := ctx.IsReexportedByModuleObjectValue(file) || node.Parent.Kind != ast.KindSourceFile
 			names[c.name] = true
+			objectNames[c.name] = objectNames[c.name] || inObject
 			for i, member := range members {
 				byMember[keyOfDeclaration(member)] = memberRef{c, i}
 				if name, ok := staticName(member.Name()); ok {
 					names[name] = true
+					objectNames[name] = objectNames[name] || inObject
 				}
 			}
 		})
@@ -74,6 +80,9 @@ func checkUnusedEnumMembers(ctx *lint.Context, _ lint.Options) []lint.Finding {
 		})
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 			if node.Kind != ast.KindIdentifier && node.Kind != ast.KindStringLiteral || !names[node.Text()] && !local[node.Text()] {
+				return
+			}
+			if !objectNames[node.Text()] && isValueMember(ch, node) {
 				return
 			}
 			symbol := ch.GetSymbolAtLocation(node)

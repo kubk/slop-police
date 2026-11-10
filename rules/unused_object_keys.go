@@ -44,6 +44,10 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 		names[c.name] = true
 	}
 
+	objectNames := moduleObjectAliases(ctx)
+	for _, c := range candidates {
+		objectNames[c.name] = objectNames[c.name] || ctx.HasModuleObjectValue(c.file)
+	}
 	escapedNames := make([][]string, len(ctx.Files))
 	uses := make([][]objectKeyUse, len(ctx.Files))
 	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
@@ -62,6 +66,9 @@ func checkUnusedObjectKeys(ctx *lint.Context, _ lint.Options) []lint.Finding {
 				return
 			case ast.KindShorthandPropertyAssignment:
 				escapedNames[file.Index] = append(escapedNames[file.Index], node.Text())
+				return
+			}
+			if !objectNames[node.Text()] && isValueMember(ch, node) {
 				return
 			}
 			locations = append(locations, node)
