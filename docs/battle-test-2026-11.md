@@ -82,11 +82,66 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
 
 ## Still open
 
-1. **Memory.** With 0.3.15, big monorepos peak at 7–7.7 GB RSS (tldraw, openbot, cloudflare-os, rakazo, workers-sdk, qwen-code), and up to 11.5 GB with the GC headroom. Measured on tldraw: about 3 GB is live at the end, about 1.1 GB of it ASTs and module resolution and about 1.9 GB checker state.
-   - **Cause:** every configured tsconfig is its own program with its own checker, each one checks the shared workspace packages again, and every checker was held for the whole run. The checker count barely matters: tldraw has 53 projects and 59 checkers, and changing `FilesPerChecker` changed nothing.
-   - **GC tuning doesn't help:** GOGC=100 was unchanged, GOGC=50 saved 1.5 GB but was 27% slower, and `GOMEMLIMIT=6GiB` doubled openbot's time without lowering its peak, because the live data is over the limit.
-   - **Fixed after 0.3.15** in `lint/context.go`: a pass over the files or the find-references queries (`ForEachFile`, `AnyReference`) now works through the projects in batches of about `Workers` checkers and releases a batch's checkers before taking the next batch's, which the checker pool disposes at once. So about `Workers` checkers are live at a time instead of one or more per project, whatever the number of projects. The rules stayed as they are: they take their checkers again in every pass, which costs about 3% on a synthetic monorepo where find-references dominates. On a synthetic monorepo of 22 projects and 702 files with `GOGC=100`, the peak RSS went from 612 MB to 358 MB with the same findings, 5% faster. Not measured on the 12 repositories: run them again for the new peaks.
-   - **Still to look at:** `cmd/slop-police/tune.go` keeps the GC off until 1.5 GB of heap and runs it with GOGC=200 after, so the peak is about three times the live data; with less live data, GOGC=100 may be worth its CPU now. The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.
+1. **Memory.** The peaks here are the peak memory footprint from `/usr/bin/time -l` on a 16 GB Mac, medians of three runs. Max RSS undercounts there because macOS compresses memory: tldraw shows 4.5 GB of RSS for a 7 GB footprint. Peaks repeat within about 7%. Times don't: the same binary took 3.5 s and 7.0 s on vinext in two sessions, so compare times only within one table.
+   - **Cause:** every configured tsconfig is its own program with its own checker, each one checks the shared workspace packages again, and with 0.3.15 every checker was held for the whole run: 6–13 GB on the big monorepos. Measured on tldraw: about 3 GB is live at the end, about 1.1 GB of it ASTs and module resolution and about 1.9 GB checker state. The checker count barely matters: tldraw has 53 projects and 59 checkers, and changing `FilesPerChecker` changed nothing.
+   - **0.3.16 released the checkers after every pass, and it didn't work.** `ForEachFile` and `AnyReference` took the projects in batches of about `Workers` checkers and released a batch's checkers when it was done, so every pass built every checker again. It had only been measured on a synthetic monorepo with `GOGC=100`. On the real ones, 0.3.15 → 0.3.16:
+
+     | Repository      | Peak, GB    | Time, s     |
+     | --------------- | ----------- | ----------- |
+     | video-shotcraft | 0.55 → 0.56 | 0.34 → 0.35 |
+     | vite            | 0.62 → 0.72 | 0.64 → 0.75 |
+     | blume           | 1.69 → 1.71 | 1.33 → 1.63 |
+     | cf              | 1.74 → 1.77 | 3.31 → 2.71 |
+     | vinext          | 3.13 → 3.35 | 3.51 → 4.44 |
+     | hyperframes     | 3.93 → 3.70 | 3.97 → 4.24 |
+     | workers-sdk     | 6.40 → 8.21 | 9.08 → 13.3 |
+     | tldraw          | 7.01 → 5.72 | 7.22 → 9.69 |
+     | cloudflare-os   | 6.98 → 5.80 | 23.5 → 23.6 |
+     | rakazo          | 8.36 → 8.47 | 13.2 → 17.4 |
+     | openbot         | 11.8 → 12.4 | 19.7 → 50.8 |
+     | qwen-code       | 13.0 → 13.0 | 31.3 → 28.8 |
+
+     Under 1.5 GB of heap the GC was off (`cmd/slop-police/tune.go`), so a released checker was never collected and the one built in its place came on top. Small repositories got bigger and slower: memo-card (5 tsconfigs, 698 files) went from 1.03 GB and 0.81 s to 1.26 GB and 1.02 s, and to 1.40 GB with 4 cores, where its projects no longer fit one batch. Over 1.5 GB the GC ran with GOGC=200, which lets the heap triple before it collects, so less live data rarely meant a lower peak.
+
+   - **What lowers the peak** is releasing checkers together with a GC that collects sooner. Peaks in GB with the checkers kept for the run or released between batches, by the GOGC used once the heap is over 1.5 GB:
+
+     | Repository    | Kept, 200 (0.3.15) | Kept, 100 | Kept, 50 | Released, 200 | Released, 100 | Released, 50 |
+     | ------------- | ------------------ | --------- | -------- | ------------- | ------------- | ------------ |
+     | vinext        | 3.13               | 2.96      | 2.72     | 3.23          | 3.12          | 2.74         |
+     | hyperframes   | 3.93               | 3.70      | 3.14     | 3.65          | 4.08          | 3.21         |
+     | workers-sdk   | 6.40               | 5.64      | 5.09     | 8.31          | 5.68          | 4.72         |
+     | tldraw        | 7.01               | 5.91      | 5.09     | 5.87          | 4.28          | 3.37         |
+     | cloudflare-os | 6.98               | 7.33      | 6.72     | 5.81          | 6.21          | 4.83         |
+     | rakazo        | 8.36               | 7.00      | 6.66     | 8.33          | 7.16          | 5.84         |
+     | openbot       | 11.8               | 9.63      | 9.67     | 12.7          | 8.25          | 6.51         |
+     | qwen-code     | 13.0               | 12.6      | 11.8     | 13.1          | 11.4          | 8.42         |
+
+     Released with GOGC=50 took about as long as released with GOGC=200. Released costs time against kept: every pass builds the checkers again, about 40% on tldraw and workers-sdk and more than twice on openbot, whose 16 tsconfigs overlap on the same sources. `GOMEMLIMIT` is no substitute: `GOMEMLIMIT=6GiB` doubled openbot's time on 0.3.15 without lowering its peak, because the live data is over the limit.
+
+   - **0.3.17 has a memory budget instead.** `tuneRuntime` in `cmd/slop-police/tune.go` sets `lint.MemoryBudget` to `SLOP_POLICE_MEMORY_GB`, or to a quarter of the machine's memory (of the container's limit when that is less). While the heap is under the budget the run spends memory to be fast: the GC is off, and the projects keep their checkers between passes (`forEachBatch` in `lint/context.go`). Once it is over, the GC runs with GOGC=50, and a batch releases the checkers of the projects outside it before it takes its own, while the heap is over the budget. The budget is where saving starts, not a cap: the big repositories peak over it. Peak in GB and time in seconds:
+
+     | Repository      | 0.3.15       | Budget 4 GB (the default on 16 GB) | Budget 1.5 GB |
+     | --------------- | ------------ | ---------------------------------- | ------------- |
+     | video-shotcraft | 0.55, 0.33 s | 0.55, 0.35 s                       | 0.55, 0.33 s  |
+     | vite            | 0.62, 0.65 s | 0.62, 0.66 s                       | 0.62, 0.66 s  |
+     | blume           | 1.69, 1.38 s | 1.69, 1.13 s                       | 1.71, 1.35 s  |
+     | cf              | 1.74, 3.38 s | 2.10, 3.76 s                       | 1.73, 2.76 s  |
+     | vinext          | 2.94, 6.97 s | 4.13, 5.22 s                       | 2.75, 7.27 s  |
+     | hyperframes     | 3.96, 5.19 s | 4.36, 4.36 s                       | 3.10, 5.49 s  |
+     | workers-sdk     | 6.22, 8.03 s | 6.18, 10.5 s                       | 4.67, 13.6 s  |
+     | tldraw          | 6.93, 6.84 s | 5.33, 8.06 s                       | 3.39, 11.1 s  |
+     | cloudflare-os   | 6.99, 19.0 s | 6.54, 24.1 s                       | 4.84, 23.7 s  |
+     | rakazo          | 8.43, 9.33 s | 5.75, 13.1 s                       | 5.12, 13.9 s  |
+     | openbot         | 12.3, 20.9 s | 7.13, 43.0 s                       | 6.50, 45.0 s  |
+     | qwen-code       | 12.1, 29.6 s | 8.54, 34.4 s                       | 8.70, 35.2 s  |
+
+     Small repositories are back where 0.3.15 had them: memo-card takes 1.04 GB and 0.88 s, and 0.81 GB and 0.95 s with `SLOP_POLICE_MEMORY_GB=0.5`. Repositories between 1.5 GB and the budget take more memory than on 0.3.15, since the GC never starts (vinext 2.94 → 4.13 GB). blume, vinext and hyperframes were 16–25% faster for it in this session, but cf's times differ by more than that between identical runs. An 8 GB budget on the 16 GB machine lost to 0.3.15 in both memory and time on most of the big repositories (workers-sdk: 9.0 GB and 18.9 s), probably because the machine starts to compress and swap.
+
+   - **Still to look at:**
+     - Releasing checkers doubles openbot's time. Ideas: start a pass from the batch that the pass before ended with, whose checkers are still there, or merge the passes of `unused-methods`.
+     - Runs in parallel each spend a quarter of the machine before they start saving. Give them a `SLOP_POLICE_MEMORY_GB`.
+     - Reading the memory on Linux (`/proc/meminfo` and the cgroup limits) has a test for the parsing, but wasn't run on Linux.
+     - The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.
 2. **Speed on big repos:** 17–21 s for openbot, cloudflare-os and qwen-code. Most of it is `unused-methods`: find-references and structural uses.
 3. **`no-pass-through-getter`** reports getters that keep a mutable `#field` read-only from outside (qwen 64, openbot 34, cloudflare-os ~14), getters with a setter, and `override` getters. Replacing these with a field would make it writable, so maintainers won't accept them. Idea: skip a getter when the class assigns the field outside the constructor, or has a setter of the same name.
 4. **`no-pass-through-wrapper`** still reports these, by design or by gap:

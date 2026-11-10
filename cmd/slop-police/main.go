@@ -1,6 +1,9 @@
 // Command slop-police lints the TypeScript projects listed in
 // ./slop-police.json. It exits with 1 when there are errors, 2 for config
 // errors and 3 when it crashes. SLOP_POLICE_TIMING=1 prints phase timings to stderr.
+// SLOP_POLICE_MEMORY_GB sets how much memory it spends on speed before it
+// starts saving memory instead, a quarter of the machine's by default (see
+// tuneRuntime).
 //
 // With --api --cwd <dir> it serves the TypeScript API on stdin and stdout
 // instead, for the npm launcher that runs plugin rules (see lint.Serve).
@@ -18,7 +21,10 @@ import (
 )
 
 func main() {
-	tuneRuntime()
+	if err := tuneRuntime(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	var timingOut io.Writer
 	if os.Getenv("SLOP_POLICE_TIMING") == "1" {
 		timingOut = os.Stderr

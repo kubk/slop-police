@@ -3,9 +3,12 @@ package lint
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/metrics"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,9 +49,10 @@ type Project struct {
 	snapshot *project.Snapshot
 	files    []*File
 
-	// The checkers are set while the project is in the batch being worked
-	// on (see forEachBatch), with the contexts to make language service
-	// calls on them and the functions that return them to the pool.
+	// The checkers are set from the first batch that the project is in
+	// until they are released (see forEachBatch), with the contexts to make
+	// language service calls on them and the functions that return them to
+	// the pool.
 	checkers   []*checker.Checker
 	checkerCtx []context.Context
 	releases   []func()
@@ -95,8 +99,8 @@ func newProjectSession(root string) *project.Session {
 			DefaultLibraryPath: bundled.LibPath(),
 			PositionEncoding:   lsproto.PositionEncodingKindUTF8,
 			// A released checker is disposed at once: checkers are released
-			// when a batch of projects is done with (see forEachBatch), so
-			// that their state is collected before the next batch's is built.
+			// to free memory (see forEachBatch), so their state has to be
+			// collectable before the next batch's is built.
 			CheckerPoolOptions: project.CheckerPoolOptions{MaxCheckers: Workers + 1, IdleTimeout: time.Nanosecond},
 		},
 	})
@@ -239,10 +243,28 @@ func (p *Project) checkerCount() int {
 	return max(1, min((len(p.files)+FilesPerChecker-1)/FilesPerChecker, Workers))
 }
 
-// takeCheckers takes the project's checkers from its checker pool, under
-// per-checker request IDs so that language service calls made with
-// checkerCtx[i] use checkers[i].
+// MemoryBudget is the heap size up to which a run spends memory to be fast:
+// the projects keep their checkers. Over it, the checkers are released
+// between batches (see forEachBatch). The command sets it, and keeps the
+// garbage collector off up to the same size (see cmd/slop-police/tune.go):
+// a released checker frees nothing until the collector runs.
+var MemoryBudget uint64 = math.MaxUint64
+
+// heapSize is the size of the heap's objects, the dead ones that the garbage
+// collector hasn't freed yet included.
+func heapSize() uint64 {
+	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(sample)
+	return sample[0].Value.Uint64()
+}
+
+// takeCheckers takes the project's checkers from its checker pool, unless it
+// has them, under per-checker request IDs so that language service calls
+// made with checkerCtx[i] use checkers[i].
 func (c *Context) takeCheckers(p *Project) {
+	if p.checkers != nil {
+		return
+	}
 	count := p.checkerCount()
 	p.checkers = make([]*checker.Checker, count)
 	p.releases = make([]func(), count)
@@ -253,20 +275,31 @@ func (c *Context) takeCheckers(p *Project) {
 	}
 }
 
-// releaseCheckers returns the project's checkers to its pool, which disposes
-// them (see newProjectSession), so that their state can be collected.
-func (c *Context) releaseCheckers(p *Project) {
-	for _, release := range p.releases {
-		release()
+// releaseCheckers returns the checkers of every project outside keep to
+// their pools, which dispose them (see newProjectSession), so that their
+// state can be collected.
+func (c *Context) releaseCheckers(keep []*Project) {
+	for _, p := range c.Projects {
+		if p.checkers == nil || slices.Contains(keep, p) {
+			continue
+		}
+		for _, release := range p.releases {
+			release()
+		}
+		p.checkers, p.releases, p.checkerCtx = nil, nil, nil
 	}
-	p.checkers, p.releases, p.checkerCtx = nil, nil, nil
 }
 
 // forEachBatch runs fn for batches of the projects, with their checkers
-// taken before and released after. A batch has as many projects as it takes
-// to have Workers checkers, so that the parallel work in fn keeps every
-// worker busy while only about Workers checkers' state is live at a time,
-// however many projects there are. The batches run one after another.
+// taken. A batch has as many projects as it takes to have Workers checkers,
+// so that the parallel work in fn keeps every worker busy. The batches run
+// one after another.
+//
+// The projects keep their checkers after fn: a checker that the next pass
+// takes again would have to resolve the same types again. While the heap is
+// over MemoryBudget, the checkers of the projects outside a batch are
+// released before the batch's are taken, so that only about Workers
+// checkers' state is live at a time, however many projects there are.
 func (c *Context) forEachBatch(projects []*Project, fn func(batch []*Project)) {
 	for start := 0; start < len(projects); {
 		end, checkers := start, 0
@@ -276,17 +309,13 @@ func (c *Context) forEachBatch(projects []*Project, fn func(batch []*Project)) {
 		}
 		batch := projects[start:end]
 		start = end
+		if heapSize() > MemoryBudget {
+			c.releaseCheckers(batch)
+		}
 		for _, p := range batch {
 			c.takeCheckers(p)
 		}
-		func() {
-			defer func() {
-				for _, p := range batch {
-					c.releaseCheckers(p)
-				}
-			}()
-			fn(batch)
-		}()
+		fn(batch)
 	}
 }
 

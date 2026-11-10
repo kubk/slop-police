@@ -103,6 +103,21 @@ export const all = [links.docs];
 
 func TestUsagesAcrossProjects(t *testing.T) {
 	t.Parallel()
+	checkUsagesAcrossProjects(t)
+}
+
+// Not parallel: it changes how every run takes checkers. With one worker
+// every project is a batch, and without a memory budget a batch releases
+// the checkers of the one before, so every pass takes its checkers again.
+func TestUsagesAcrossProjectsWithReleasedCheckers(t *testing.T) {
+	workers, budget := lint.Workers, lint.MemoryBudget
+	lint.Workers, lint.MemoryBudget = 1, 0
+	defer func() { lint.Workers, lint.MemoryBudget = workers, budget }()
+	checkUsagesAcrossProjects(t)
+}
+
+func checkUsagesAcrossProjects(t *testing.T) {
+	t.Helper()
 	results := lintFindings(t, map[string]string{
 		"api/tsconfig.json": tsconfig,
 		"api/store.ts": `

@@ -7,6 +7,7 @@ go 1.26
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.3
 	github.com/microsoft/typescript-go v0.0.0-20260708042240-2bd066d87f5b
+	golang.org/x/sys v0.46.0
 )
 
 require (
@@ -16,7 +17,6 @@ require (
 	github.com/mackerelio/go-osstat v0.2.7 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )

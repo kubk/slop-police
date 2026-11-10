@@ -210,6 +210,10 @@ Make CI fail when something slips through
 - run: npx slop-police
 ```
 
+## Memory
+
+slop-police spends memory to be fast until it has used a quarter of the machine's memory (or of the container's limit), and saves memory at the cost of speed after that. `SLOP_POLICE_MEMORY_GB` moves that point, for example `SLOP_POLICE_MEMORY_GB=1` on a small CI runner. It isn't a hard limit: a big monorepo still takes more.
+
 ## Custom rules
 
 Write rules in TypeScript or JavaScript, list their modules in `plugins` and turn them on in `rules`:
