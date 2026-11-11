@@ -177,12 +177,15 @@ func collectResults(ctx *Context, config *Config, perRule [][]Finding) []Result 
 	return results
 }
 
-// runSyntaxRules does one traversal per file (files in parallel) for all
-// syntax rules.
+// runSyntaxRules does one traversal per non-test file (files in parallel)
+// for all syntax rules.
 func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule [][]Finding) {
 	perFile := make([][][]Finding, len(ctx.Files))
 	ctx.Parallel(len(ctx.Files), func(fi int) {
 		file := ctx.Files[fi]
+		if file.IsTest {
+			return
+		}
 		findings, reports := fileReports(file, len(indexes))
 		current := ""
 		defer func() {
@@ -205,10 +208,17 @@ func runSyntaxRules(ctx *Context, rules []EnabledRule, indexes []int, perRule []
 	collectPerFile(perFile, indexes, perRule)
 }
 
-// runFileRules runs all per-file checker rules in one parallel pass.
+// runFileRules runs all per-file checker rules in one parallel pass over
+// the non-test files.
 func runFileRules(ctx *Context, rules []EnabledRule, indexes []int, perRule [][]Finding) {
 	perFile := make([][][]Finding, len(ctx.Files))
-	ctx.ForEachFile(ctx.Files, func(file *File, ch *checker.Checker) {
+	var files []*File
+	for _, file := range ctx.Files {
+		if !file.IsTest {
+			files = append(files, file)
+		}
+	}
+	ctx.ForEachFile(files, func(file *File, ch *checker.Checker) {
 		findings, reports := fileReports(file, len(indexes))
 		for k, ri := range indexes {
 			func() {
@@ -235,11 +245,13 @@ func fileReports(file *File, count int) ([][]Finding, []Report) {
 }
 
 // collectPerFile adds the findings of each file (by position among indexes)
-// to perRule, in file order.
+// to perRule, in file order. Files the rules skipped have no findings.
 func collectPerFile(perFile [][][]Finding, indexes []int, perRule [][]Finding) {
 	for k, ri := range indexes {
 		for _, findings := range perFile {
-			perRule[ri] = append(perRule[ri], findings[k]...)
+			if findings != nil {
+				perRule[ri] = append(perRule[ri], findings[k]...)
+			}
 		}
 	}
 }

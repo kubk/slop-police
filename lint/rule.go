@@ -35,12 +35,14 @@ type Report func(node *ast.Node, message string)
 
 // A built-in Rule implements exactly one of Visit, CheckFile or Check:
 //
-//   - Visit: syntax only. Called for every node of every analyzed file, in a
-//     single traversal shared by all syntax rules, files in parallel.
-//   - CheckFile: per file, with the type checker that owns the file. Files
-//     run in parallel.
+//   - Visit: syntax only. Called for every node of every analyzed file
+//     except test files, in a single traversal shared by all syntax rules,
+//     files in parallel.
+//   - CheckFile: per file except test files, with the type checker that
+//     owns the file. Files run in parallel.
 //   - Check: whole program. Gets the Context and uses its helpers
-//     (ForEachFile, Parallel, AnyReference) for cross-file analyses.
+//     (ForEachFile, Parallel, AnyReference) for cross-file analyses. It
+//     skips declarations in test files itself (File.IsTest).
 //
 // A plugin rule implements none: the npm launcher runs it in Node and sends
 // its findings (see Serve).

@@ -350,6 +350,49 @@ func TestIgnoreGlobs(t *testing.T) {
 	}
 }
 
+func TestTestFilesSkipPerFileRules(t *testing.T) {
+	t.Parallel()
+	source := `
+function fetchUser(id: string) { return id; }
+class Store {
+  private transition = "animated";
+  get currentTransition() { return this.transition; }
+  load(id: string) { return fetchUser(id); }
+}
+type User = { id: string };
+type Member = User;
+function search(member: Member) {
+  const store = new Store();
+  const alias = store;
+  return alias.load(member.id) + alias.currentTransition;
+}
+search({ id: "" });
+export {};
+`
+	results := lintFindings(t, map[string]string{"src/store.ts": source, "tests/store.ts": source}, obj{
+		"testFiles": []string{"tests/**"},
+		"rules": obj{
+			"no-pass-through-getter":   "error",
+			"no-pass-through-wrapper":  "error",
+			"no-identity-type-alias":   "error",
+			"no-redundant-value-alias": "error",
+		},
+	})
+	var got []string
+	for _, r := range results {
+		got = append(got, r.File+" "+r.Rule)
+	}
+	want := []string{
+		"src/store.ts no-pass-through-getter",
+		"src/store.ts no-pass-through-wrapper",
+		"src/store.ts no-identity-type-alias",
+		"src/store.ts no-redundant-value-alias",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v\nwant %v", got, want)
+	}
+}
+
 func TestUnresolvedImports(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, map[string]string{
