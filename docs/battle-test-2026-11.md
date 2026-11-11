@@ -188,7 +188,6 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
 4. **`no-pass-through-wrapper`** still reports these, by design or by gap:
    - wrappers over module-private state, like `const byId = new Map(); export function get(id) { return byId.get(id) }`. That's inconsistent with the `this.items.get()` exemption.
    - delegation to `this.#fn(x)` or deeper paths like `this.#options.store.list()` (`isPrivateMemberDelegation` handles only `this.#x.m()`)
-   - wrappers that add a default parameter value (`f(x = "en") { return g(x) }`)
    - wrappers whose receiver is a parameter (`v.toLocaleString()`)
    - `accepts(id, id)`
    - callees that are a reassignable `let`

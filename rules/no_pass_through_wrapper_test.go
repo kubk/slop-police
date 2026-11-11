@@ -81,6 +81,23 @@ export function getUser(id: string) {
 export function readUser(id: string) {
   return api.loadUser(id);
 }
+
+// A wrapper is exempt only when calling it does something different from calling the callee directly.
+// A default does; leaving out the callee's optional parameters doesn't.
+declare function translateIn(key: string, locale: string): string;
+declare function eq(a: unknown, b: unknown, depth?: number, aStack?: unknown[], bStack?: unknown[]): boolean;
+
+export function localized(key: string, locale = "en") {
+  return translateIn(key, locale);
+}
+
+export function deepEqual(a: unknown, b: unknown, depth = -1) {
+  return eq(a, b, depth);
+}
+
+export function shallowEqual(a: unknown, b: unknown) {
+  return eq(a, b);
+}
 `,
 		"chains.ts": `declare function getDayStart(date: Date): Date;
 declare const db: { select(): { from(table: string): { limit(n: number): unknown } } };
@@ -268,6 +285,7 @@ export class Store {
 		{"fixture.ts", 57, 17, "Function getJson only forwards to fetchJson"},
 		{"fixture.ts", 61, 17, "Function findUser only forwards to prisma.user.find"},
 		{"fixture.ts", 66, 17, "Function getUser only forwards to api.loadUser"},
+		{"fixture.ts", 88, 17, "Function shallowEqual only forwards to eq"},
 		{"members.ts", 25, 3, "Method getShared only forwards to this.shared.get"},
 		{"members.ts", 28, 3, "Method load only forwards to this.loadImpl"},
 		{"shapes.ts", 48, 3, "Method close only forwards to super.close"},

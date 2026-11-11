@@ -33,7 +33,8 @@ func init() {
 // passThroughCall returns the call in the body of fn that is a single
 // `return f(...)` or `return await f(...)` statement, when the callee is a
 // plain path (see isPlainPath) and every argument is one of the function's
-// parameters, as is: the function only forwards to another one.
+// parameters, as is: the function only forwards to another one. A parameter
+// with a default value isn't passed as is.
 func passThroughCall(fn checkedFunction) *ast.Node {
 	statements := fn.Body.Statements()
 	if len(statements) != 1 || statements[0].Kind != ast.KindReturnStatement {
@@ -48,7 +49,7 @@ func passThroughCall(fn checkedFunction) *ast.Node {
 	}
 	parameters := map[string]bool{}
 	for _, parameter := range fn.Function.Parameters() {
-		if name := parameter.Name(); name.Kind == ast.KindIdentifier {
+		if name := parameter.Name(); name.Kind == ast.KindIdentifier && parameter.Initializer() == nil {
 			parameters[name.Text()] = true
 		}
 	}
