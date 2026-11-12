@@ -190,6 +190,16 @@ It's the only built-in rule that is off by default: on a big monorepo it takes m
 "rules": { "unused-methods": "error" }
 ```
 
+### no-unresolved-import
+
+Relative imports of files that don't exist.
+
+```ts
+import { render } from '../src' // Cannot find module ../src
+```
+
+Other imports that don't resolve stop the run instead, because then usages can't be linked to declarations: packages that aren't installed, and files that exist but don't resolve under the tsconfig.
+
 ## Configuration
 
 Put a `slop-police.json` in the directory you run it from:

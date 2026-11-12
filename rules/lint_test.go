@@ -406,10 +406,16 @@ import logo from "./logo.svg";
 import { apiUrl } from "virtual:config";
 import { one } from "./util";
 import { two } from "./missing";
+import { three } from "../lib/missing";
+import photo from "./photo.png";
 export * from "lodash";
 export type Store = import("mobx").IObservableValue<number>;
 export const load = () => import("zod");
 export const react = useState;
+`,
+		"photo.png": "",
+		"app.test.ts": `import { render } from "./gone";
+export const rendered = render;
 `,
 		"other.ts": `import { useEffect } from "react";
 export const effect = useEffect;
@@ -432,14 +438,39 @@ export const all = [workers, stage, manifest];
 	_, err := lint.Lint(root, fixtureConfig(t, obj{"rules": obj{"unused-methods": "error"}}), nil)
 	want := `Cannot find 7 imported modules; install dependencies or fix the imports:
   react  app.tsx:1:26
-  ./missing  app.tsx:6:21
-  lodash  app.tsx:7:15
-  mobx  app.tsx:8:28
-  zod  app.tsx:9:34
+  ./photo.png  app.tsx:8:19
+  lodash  app.tsx:9:15
+  mobx  app.tsx:10:28
+  zod  app.tsx:11:34
   virtual:stage  virtual.ts:8:23
   virtual:manifest  virtual.ts:12:8`
 	if err == nil || err.Error() != want {
 		t.Errorf("got %v\nwant %s", err, want)
+	}
+}
+
+// A relative import of a file that doesn't exist is a finding: it can't hide
+// usages, so the rest of the run is still sound.
+func TestMissingImportedFile(t *testing.T) {
+	t.Parallel()
+	results := lintFindings(t, map[string]string{
+		"util.ts": "export const one = 1;\n",
+		"app.ts": `import { one } from "./util";
+import { two } from "./missing";
+// slop-police-ignore no-unresolved-import -- generated at build time
+import { three } from "./generated";
+export const all = [one, two, three];
+`,
+		"app.test.ts": `import { render } from "../gone";
+render();
+`,
+	}, obj{"rules": obj{"no-unresolved-import": "error"}})
+	want := []lint.Result{
+		{Rule: "no-unresolved-import", Severity: "error", File: "app.test.ts", Line: 1, Column: 24, Message: "Cannot find module ../gone"},
+		{Rule: "no-unresolved-import", Severity: "error", File: "app.ts", Line: 2, Column: 21, Message: "Cannot find module ./missing"},
+	}
+	if !slices.Equal(results, want) {
+		t.Errorf("got %v\nwant %v", results, want)
 	}
 }
 

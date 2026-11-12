@@ -86,6 +86,9 @@ type Context struct {
 	HasEntries bool
 
 	filesByPath map[tspath.Path]*File
+	// missingImports are relative imports of files that don't exist, which
+	// no-unresolved-import reports (see checkImports).
+	missingImports []Finding
 
 	moduleObjectsOnce     sync.Once
 	moduleObjectExports   map[tspath.Path]bool // see HasModuleObjectValue
