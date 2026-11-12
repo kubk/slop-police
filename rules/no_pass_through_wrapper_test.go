@@ -121,6 +121,14 @@ export function format(value: number) {
 export function element(id: string) {
   return document["getElementById"](id);
 }
+
+export function displayName(user: { profile: { name(): string } }) {
+  return user.profile.name();
+}
+
+export function run(callback: (value: number) => number, value: number) {
+  return callback(value);
+}
 `,
 		"shapes.ts": `declare function handle(request: Request): Promise<Response>;
 

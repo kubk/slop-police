@@ -58,7 +58,31 @@ func passThroughCall(fn checkedFunction) *ast.Node {
 			return nil
 		}
 	}
+	// getName(user) { return user.getName() } turns a method into a function
+	// of its receiver, and run(fn, x) { return fn(x) } calls its argument:
+	// callers can't call the callee instead, since they only have it once
+	// they have the argument.
+	if root := pathRoot(call.Expression()); root.Kind == ast.KindIdentifier && isParameterName(fn, root.Text()) {
+		return nil
+	}
 	return call
+}
+
+// pathRoot returns the leftmost name of a plain path: user in user.profile.load.
+func pathRoot(node *ast.Node) *ast.Node {
+	for node.Kind != ast.KindIdentifier && node.Kind != ast.KindThisKeyword && node.Kind != ast.KindSuperKeyword {
+		node = node.Expression()
+	}
+	return node
+}
+
+func isParameterName(fn checkedFunction, name string) bool {
+	for _, parameter := range fn.Function.Parameters() {
+		if parameter.Name().Kind == ast.KindIdentifier && parameter.Name().Text() == name {
+			return true
+		}
+	}
+	return false
 }
 
 // isPlainPath reports whether node only names something, like load,
