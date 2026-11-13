@@ -13,11 +13,11 @@ import (
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
-// unused-methods reports class methods and accessors (with a body) and class
-// fields that are never referenced outside their own bodies or initializers,
-// so recursion isn't a use. Fields with decorators, which a framework may
-// read, and declare and abstract fields aren't checked. A member counts as
-// used when:
+// unused-class-members reports class methods and accessors (with a body) and
+// class fields that are never referenced outside their own bodies or
+// initializers, so recursion isn't a use. Fields with decorators, which a
+// framework may read, and declare and abstract fields aren't checked. A
+// member counts as used when:
 //   - some identifier or string literal with its name resolves to it (or to
 //     a member it implements or overrides),
 //   - it implements or overrides a member declared outside the analyzed
@@ -31,10 +31,10 @@ import (
 // repository, where it resolves every reference to every class member.
 func init() {
 	lint.Register(&lint.Rule{
-		Name:           "unused-methods",
+		Name:           "unused-class-members",
 		DefaultOptions: lint.Options{"includePrivate": false, "includeProtected": false},
 		Optional:       true,
-		Check:          checkUnusedMethods,
+		Check:          checkUnusedClassMembers,
 	})
 }
 
@@ -47,7 +47,7 @@ type memberKey struct {
 	static     bool
 }
 
-type methodCandidate struct {
+type memberCandidate struct {
 	file *lint.File
 	node *ast.Node
 	key  memberKey
@@ -61,7 +61,7 @@ type usage struct {
 	byClass map[memberKey][]int // keyed by class position (empty name)
 }
 
-func newUsage(candidates []*methodCandidate) *usage {
+func newUsage(candidates []*memberCandidate) *usage {
 	u := &usage{index: map[memberKey]int{}, byClass: map[memberKey][]int{}}
 	for _, c := range candidates {
 		if _, ok := u.index[c.key]; !ok {
@@ -94,9 +94,9 @@ func (u *usage) classHasUnused(class *ast.Node) bool {
 	return false
 }
 
-func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding {
-	phase := ctx.Timing.Phase("unused-methods")
-	candidates := collectMethodCandidates(ctx, options)
+func checkUnusedClassMembers(ctx *lint.Context, options lint.Options) []lint.Finding {
+	phase := ctx.Timing.Phase("unused-class-members")
+	candidates := collectMemberCandidates(ctx, options)
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -134,7 +134,7 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 	})
 	phase(fmt.Sprintf("structural uses (%d files)", len(structuralFiles)))
 
-	var remaining []*methodCandidate
+	var remaining []*memberCandidate
 	for _, c := range candidates {
 		if !used.has(c.key) {
 			remaining = append(remaining, c)
@@ -158,8 +158,8 @@ func checkUnusedMethods(ctx *lint.Context, options lint.Options) []lint.Finding 
 	return findings
 }
 
-func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodCandidate {
-	var candidates []*methodCandidate
+func collectMemberCandidates(ctx *lint.Context, options lint.Options) []*memberCandidate {
+	var candidates []*memberCandidate
 	for _, file := range ctx.Files {
 		if file.IsTest {
 			continue
@@ -168,7 +168,7 @@ func collectMethodCandidates(ctx *lint.Context, options lint.Options) []*methodC
 			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) && !isPublicMember(file, node) {
 				key := classMemberKey(node.Parent, node.Name().Text())
 				key.static = hasModifier(node, ast.KindStaticKeyword)
-				candidates = append(candidates, &methodCandidate{file, node, key})
+				candidates = append(candidates, &memberCandidate{file, node, key})
 			}
 		})
 	}
@@ -262,8 +262,8 @@ func calledByRuntime(ctx *lint.Context, ch *checker.Checker, class *ast.Node) fu
 // override a member declared outside the analyzed files, such as a library's
 // interface or base class: the library calls them, and its code isn't
 // searched for references.
-func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
-	byFile := map[*lint.File]map[*ast.Node][]*methodCandidate{} // by class
+func addInheritedMembers(ctx *lint.Context, candidates []*memberCandidate, membersByDeclaration map[declKey][]memberKey) []memberKey {
+	byFile := map[*lint.File]map[*ast.Node][]*memberCandidate{} // by class
 	var files []*lint.File
 	for _, c := range candidates {
 		class := c.node.Parent
@@ -271,7 +271,7 @@ func addInheritedMembers(ctx *lint.Context, candidates []*methodCandidate, membe
 			continue
 		}
 		if byFile[c.file] == nil {
-			byFile[c.file] = map[*ast.Node][]*methodCandidate{}
+			byFile[c.file] = map[*ast.Node][]*memberCandidate{}
 			files = append(files, c.file)
 		}
 		byFile[c.file][class] = append(byFile[c.file][class], c)
@@ -635,7 +635,7 @@ func unionMembers(t *checker.Type) []*checker.Type {
 // contains a class with an unused candidate. A checker only produces classes
 // declared in its own program, so instances can't be used structurally
 // elsewhere.
-func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*methodCandidate, used *usage) []*lint.File {
+func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*memberCandidate, used *usage) []*lint.File {
 	relevant := map[*lint.Project]bool{}
 	for _, c := range candidates {
 		if !used.has(c.key) {
@@ -656,7 +656,7 @@ func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*methodCand
 // hasReferencesOutsideDeclaration reports, per candidate, whether
 // find-all-references in any project containing its file finds a reference
 // in an analyzed file that is not a class member's own name.
-func hasReferencesOutsideDeclaration(ctx *lint.Context, candidates []*methodCandidate) []bool {
+func hasReferencesOutsideDeclaration(ctx *lint.Context, candidates []*memberCandidate) []bool {
 	var queries []lint.ReferenceQuery
 	var owners []int
 	for i, c := range candidates {

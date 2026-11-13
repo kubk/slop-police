@@ -1,4 +1,4 @@
 exit 1
-a.ts:1:33  error  unused-methods  Method Store.unused is never used
+a.ts:1:33  error  unused-class-members  Method Store.unused is never used
 
 1 error, 0 warnings

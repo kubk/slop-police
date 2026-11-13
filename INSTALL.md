@@ -52,7 +52,7 @@ Put one config at the repository root, even in a monorepo: usages are counted ac
 
 Tests are entry points already. An entry's own exports aren't checked, and neither are the members of the classes it exports, so don't list a file that something else already imports.
 
-**`rules`**: every built-in rule is already on as an error, except `unused-methods`, which is slow on big repositories. Keep them at their defaults.
+**`rules`**: every built-in rule is already on as an error, except `unused-class-members`, which is slow on big repositories. Keep them at their defaults.
 
 ## 4. Run it and sort the findings
 

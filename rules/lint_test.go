@@ -14,7 +14,7 @@ import (
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
-var methodAndKeyRules = obj{"unused-methods": "error", "unused-object-keys": "error"}
+var methodAndKeyRules = obj{"unused-class-members": "error", "unused-object-keys": "error"}
 
 type ruleMessage struct {
 	Rule    string
@@ -41,13 +41,13 @@ export const ignoredKey = {
 };
 
 class Store {
-  // slop-police-ignore unused-methods -- kept for debugging
+  // slop-police-ignore unused-class-members -- kept for debugging
   debug() {}
   // slop-police-ignore unused-object-keys
   wrongRule() {}
 }
 
-// slop-police-ignore unused-methods
+// slop-police-ignore unused-class-members
 class IgnoredStore {
   unused() {}
 }
@@ -56,7 +56,7 @@ new Store();
 new IgnoredStore();
 export const all = [ignoredObject.a, ignoredKey.a];
 `}, obj{"rules": methodAndKeyRules})
-	want := []ruleMessage{{"unused-methods", "Method Store.wrongRule is never used"}}
+	want := []ruleMessage{{"unused-class-members", "Method Store.wrongRule is never used"}}
 	if got := ruleMessages(results); !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -66,13 +66,13 @@ func TestUnusedIgnoreComments(t *testing.T) {
 	t.Parallel()
 	results := lintFindings(t, map[string]string{"fixture.ts": `
 class Store {
-  // slop-police-ignore unused-methods -- called from the devtools console
+  // slop-police-ignore unused-class-members -- called from the devtools console
   debug() {}
-  // slop-police-ignore unused-methods -- now called below
+  // slop-police-ignore unused-class-members -- now called below
   load() {}
-  // slop-police-ignore unused-methods, unused-object-keys
+  // slop-police-ignore unused-class-members, unused-object-keys
   reset() {}
-  // slop-police-ignore unused-methods no-duplicate-code no-promise-default-fallback
+  // slop-police-ignore unused-class-members no-duplicate-code no-promise-default-fallback
   close() {}
 }
 
@@ -85,9 +85,9 @@ export const spaced = 1;
 
 new Store().load();
 export const all = [links.docs];
-`}, obj{"rules": obj{"unused-methods": "error", "unused-object-keys": "error", "unused-ignore": "warn"}})
+`}, obj{"rules": obj{"unused-class-members": "error", "unused-object-keys": "error", "unused-ignore": "warn"}})
 	want := []ruleMessage{
-		{"unused-ignore", "Ignore comment for unused-methods silences nothing"},
+		{"unused-ignore", "Ignore comment for unused-class-members silences nothing"},
 		{"unused-ignore", "Ignore comment for unused-object-keys silences nothing"},
 		{"unused-ignore", `Ignore comment names unknown rule "no-promise-default-fallback"`},
 		{"unused-ignore", "Ignore comment silences nothing"},
@@ -135,7 +135,7 @@ export const link = links.usedByWeb;
 `,
 	}, obj{"projects": []string{"api/tsconfig.json", "web/tsconfig.json"}, "rules": methodAndKeyRules})
 	want := []ruleMessage{
-		{"unused-methods", "Method Store.unused is never used"},
+		{"unused-class-members", "Method Store.unused is never used"},
 		{"unused-object-keys", "links.unused is never read"},
 	}
 	if got := ruleMessages(results); !slices.Equal(got, want) {
@@ -150,9 +150,9 @@ func TestConfigErrors(t *testing.T) {
 		want   string
 	}{
 		{`{"projects": ["tsconfig.json"], "rules": {"unused-method": "error"}}`, "Unknown rule: unused-method"},
-		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"private": true}]}}`, "Unknown option for rule unused-methods: private"},
-		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": "fatal"}}`, `Rule unused-methods severity must be "error", "warn" or "off"`},
-		{`{"projects": ["tsconfig.json"], "rules": {"unused-methods": ["error", {"includePrivate": 1}]}}`, "Rule unused-methods option includePrivate must be a boolean"},
+		{`{"projects": ["tsconfig.json"], "rules": {"unused-class-members": ["error", {"private": true}]}}`, "Unknown option for rule unused-class-members: private"},
+		{`{"projects": ["tsconfig.json"], "rules": {"unused-class-members": "fatal"}}`, `Rule unused-class-members severity must be "error", "warn" or "off"`},
+		{`{"projects": ["tsconfig.json"], "rules": {"unused-class-members": ["error", {"includePrivate": 1}]}}`, "Rule unused-class-members option includePrivate must be a boolean"},
 		{`{"projects": [], "rules": {}}`, `"projects" must be a non-empty array of tsconfig paths`},
 		{`{"projects": ["tsconfig.json"], "rule": {}}`, "Unknown config key: rule"},
 		{`[]`, "Config must be an object"},
@@ -193,10 +193,10 @@ func TestDefaultRules(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 	// An optional rule runs only when listed.
-	if _, ok := got["unused-methods"]; ok {
-		t.Errorf("unused-methods runs by default: %v", got)
+	if _, ok := got["unused-class-members"]; ok {
+		t.Errorf("unused-class-members runs by default: %v", got)
 	}
-	if got := rulesOf(`{"unused-methods": "warn"}`); len(got) != len(all)+1 || got["unused-methods"] != "warn <nil>" {
+	if got := rulesOf(`{"unused-class-members": "warn"}`); len(got) != len(all)+1 || got["unused-class-members"] != "warn <nil>" {
 		t.Errorf("got %v", got)
 	}
 }
@@ -228,7 +228,7 @@ func TestPluginConfig(t *testing.T) {
 	}{
 		{`{"projects": ["tsconfig.json"], "plugins": "./rules.ts"}`, pluginRules, `"plugins" must be an array of module paths`},
 		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": "error"}}`, nil, "Plugins are loaded by the npm launcher: run slop-police with npx or pnpm exec"},
-		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"]}`, []*lint.Rule{{Name: "unused-methods"}}, "Plugin rule unused-methods has the same name as a built-in rule"},
+		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"]}`, []*lint.Rule{{Name: "unused-class-members"}}, "Plugin rule unused-class-members has the same name as a built-in rule"},
 		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["error", {"allow": "src/api"}]}}`, pluginRules, "Rule no-direct-fetch option allow must be an array"},
 		{`{"projects": ["tsconfig.json"], "plugins": ["./rules.ts"], "rules": {"no-direct-fetch": ["error", {"deny": []}]}}`, pluginRules, "Unknown option for rule no-direct-fetch: deny"},
 	}
@@ -283,11 +283,11 @@ new Store();
 		return code, stdout.String(), stderr.String()
 	}
 	withSeverity := func(severity string) string {
-		data, _ := json.Marshal(obj{"projects": []string{"tsconfig.json"}, "rules": obj{"unused-methods": severity}})
+		data, _ := json.Marshal(obj{"projects": []string{"tsconfig.json"}, "rules": obj{"unused-class-members": severity}})
 		return string(data)
 	}
 
-	if code, stdout, _ := run(withSeverity("error")); code != 1 || stdout != "store.ts:3:3  error  unused-methods  Method Store.unused is never used\n\n1 error, 0 warnings\n" {
+	if code, stdout, _ := run(withSeverity("error")); code != 1 || stdout != "store.ts:3:3  error  unused-class-members  Method Store.unused is never used\n\n1 error, 0 warnings\n" {
 		t.Errorf("error: exit %d, stdout %q", code, stdout)
 	}
 	if code, stdout, _ := run(withSeverity("warn")); code != 0 || !strings.Contains(stdout, "0 errors, 1 warning") {
@@ -296,7 +296,7 @@ new Store();
 	if code, stdout, _ := run(withSeverity("off")); code != 0 || stdout != "No problems found\n" {
 		t.Errorf("off: exit %d, stdout %q", code, stdout)
 	}
-	if code, stdout, stderr := run(`{"projects": ["missing.json"], "rules": {"unused-methods": "error"}}`); code != 2 || stdout != "" || stderr != "TypeScript project not found: missing.json\n" {
+	if code, stdout, stderr := run(`{"projects": ["missing.json"], "rules": {"unused-class-members": "error"}}`); code != 2 || stdout != "" || stderr != "TypeScript project not found: missing.json\n" {
 		t.Errorf("missing project: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	if code, _, stderr := run(`{"projects": `); code != 2 || !strings.HasPrefix(stderr, "Unable to parse slop-police.json: ") {
@@ -435,7 +435,7 @@ import {
 export const all = [workers, stage, manifest];
 `,
 	})
-	_, err := lint.Lint(root, fixtureConfig(t, obj{"rules": obj{"unused-methods": "error"}}), nil)
+	_, err := lint.Lint(root, fixtureConfig(t, obj{"rules": obj{"unused-class-members": "error"}}), nil)
 	want := `Cannot find 7 imported modules; install dependencies or fix the imports:
   react  app.tsx:1:26
   ./photo.png  app.tsx:8:19
@@ -521,7 +521,7 @@ export class Helper {
 	}, obj{
 		"entry": []string{"index.ts"},
 		"rules": obj{
-			"unused-methods":          []any{"error", obj{"includePrivate": true}},
+			"unused-class-members":    []any{"error", obj{"includePrivate": true}},
 			"no-pass-through-wrapper": "error",
 			"no-pass-through-getter":  "error",
 			"no-identity-type-alias":  "error",
@@ -531,8 +531,8 @@ export class Helper {
 	})
 	want := []ruleMessage{
 		{"no-pass-through-wrapper", "Method close only forwards to super.close"},
-		{"unused-methods", "Method Store.unusedPrivate is never used"},
-		{"unused-methods", "Method Unexported.unused is never used"},
+		{"unused-class-members", "Method Store.unusedPrivate is never used"},
+		{"unused-class-members", "Method Unexported.unused is never used"},
 	}
 	if got := ruleMessages(results); !slices.Equal(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)

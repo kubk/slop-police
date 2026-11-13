@@ -231,9 +231,9 @@ test('config errors exit with 2', (t) => {
     [
       { ...project, plugins: ['./rules/alias.js'] },
       {
-        'rules/alias.js': `import { defineRule } from "slop-police"; export default defineRule({ name: "unused-methods", visit: {} });`,
+        'rules/alias.js': `import { defineRule } from "slop-police"; export default defineRule({ name: "unused-class-members", visit: {} });`,
       },
-      /^Plugin rule unused-methods has the same name as a built-in rule\n$/,
+      /^Plugin rule unused-class-members has the same name as a built-in rule\n$/,
     ],
   ]
   for (const [config, files, stderr] of cases) {

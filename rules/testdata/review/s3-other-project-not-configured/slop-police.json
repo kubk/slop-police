@@ -1,1 +1,1 @@
-{"projects":["p1.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error"}}
+{"projects":["p1.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-class-members":"error"}}

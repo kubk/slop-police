@@ -172,7 +172,7 @@ If you want to be extra strict, list your entry points in the [`entry`](#configu
 "entry": ["src/main.tsx", "src/routes/**/*.tsx", "vite.config.ts"]
 ```
 
-### unused-methods
+### unused-class-members
 
 Class methods and fields that are never used. Here `reset` and `retries` are unused.
 
@@ -190,7 +190,7 @@ Fields with decorators aren't checked, since a framework may read them.
 It's the only built-in rule that is off by default: on a big monorepo it takes most of the run's time and memory. Turn it on in [`rules`](#configuration):
 
 ```json
-"rules": { "unused-methods": "error" }
+"rules": { "unused-class-members": "error" }
 ```
 
 ### no-unresolved-import
@@ -218,7 +218,7 @@ Put a `slop-police.json` in the directory you run it from:
 - `ignore`: glob patterns (relative to the config) for files to skip entirely. Files that `.gitignore` ignores are skipped too.
 - `testFiles`: glob patterns for tests. Usages inside tests count, but declarations inside tests are not reported.
 - `entry`: glob patterns for the files that something outside the analyzed code loads, like `src/main.tsx` or a package's `src/index.ts`. With it, `unused-exports` also reports files that nothing imports from them. What they export is public API: its methods, getters, wrappers, type aliases, enum members and object keys aren't reported.
-- `rules`: you usually don't need it, since every built-in rule except [`unused-methods`](#unused-methods) is already on as an error. It's for rule options, like `no-duplicate-code`'s `minLines`, and for turning on `unused-methods` and plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
+- `rules`: you usually don't need it, since every built-in rule except [`unused-class-members`](#unused-class-members) is already on as an error. It's for rule options, like `no-duplicate-code`'s `minLines`, and for turning on `unused-class-members` and plugin rules. A rule takes `"error"`, `"warn"`, `"off"` or `[severity, options]`.
 - `plugins`: modules with [custom rules](#custom-rules), as paths relative to the config or package names.
 
 ## CI

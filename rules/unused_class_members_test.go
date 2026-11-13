@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestUnusedMethods(t *testing.T) {
+func TestUnusedClassMembers(t *testing.T) {
 	t.Parallel()
 	hiddenMembers := map[string]string{"store.ts": `
 export class Store {
@@ -371,7 +371,7 @@ new Store().reset();
 			if options == nil {
 				options = obj{}
 			}
-			results := lintFindings(t, test.files, obj{"rules": obj{"unused-methods": []any{"error", options}}})
+			results := lintFindings(t, test.files, obj{"rules": obj{"unused-class-members": []any{"error", options}}})
 			if got := messages(results); !slices.Equal(got, test.want) {
 				t.Errorf("got %q, want %q", got, test.want)
 			}

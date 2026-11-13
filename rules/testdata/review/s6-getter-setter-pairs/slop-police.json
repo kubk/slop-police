@@ -1,1 +1,1 @@
-{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error","no-pass-through-getter":"warn"}}
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-class-members":"error","no-pass-through-getter":"warn"}}
