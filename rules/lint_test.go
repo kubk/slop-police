@@ -302,6 +302,13 @@ new Store();
 	if code, _, stderr := run(`{"projects": `); code != 2 || !strings.HasPrefix(stderr, "Unable to parse slop-police.json: ") {
 		t.Errorf("invalid json: exit %d, stderr %q", code, stderr)
 	}
+	if err := os.Remove(filepath.Join(root, "slop-police.json")); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := lint.Run(root, &stdout, &stderr, nil); code != 2 || !strings.Contains(stderr.String(), "/INSTALL.md") {
+		t.Errorf("missing config: exit %d, stderr %q", code, stderr.String())
+	}
 }
 
 func TestGitignore(t *testing.T) {
