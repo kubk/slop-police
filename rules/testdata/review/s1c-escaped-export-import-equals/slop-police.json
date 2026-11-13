@@ -1,1 +1,1 @@
-{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-methods":"error"},"ignore":["n.ts"]}
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"unused-class-members":"error"},"ignore":["n.ts"]}

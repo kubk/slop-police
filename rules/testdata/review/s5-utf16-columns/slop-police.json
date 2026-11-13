@@ -1,1 +1,1 @@
-{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"no-identity-type-alias":"error","no-pass-through-getter":"error","unused-methods":"off"}}
+{"projects":["tsconfig.json"],"testFiles":["**/*.test.ts"],"rules":{"no-identity-type-alias":"error","no-pass-through-getter":"error","unused-class-members":"off"}}
