@@ -174,15 +174,18 @@ If you want to be extra strict, list your entry points in the [`entry`](#configu
 
 ### unused-methods
 
-Class methods that are never called. Here `reset` is unused.
+Class methods and fields that are never used. Here `reset` and `retries` are unused.
 
 ```ts
 class Store {
+  retries = 0
   load() {}
   reset() {}
 }
 new Store().load()
 ```
+
+Fields with decorators aren't checked, since a framework may read them.
 
 It's the only built-in rule that is off by default: on a big monorepo it takes most of the run's time and memory. Turn it on in [`rules`](#configuration):
 
