@@ -329,6 +329,27 @@ new Tree().visit(3);
 			want: []string{"Method Tree.walk is never used", "Getter Tree.depth is never used"},
 		},
 		{
+			name: "fields",
+			files: map[string]string{"store.ts": `
+declare function tracked(value: undefined, context: ClassFieldDecoratorContext): void;
+abstract class Store {
+  read = 1;
+  written = 0;
+  unused = 2;
+  static unusedStatic = 3;
+  handler = () => this.read;
+  self: Store | null = this.self;
+  @tracked decorated = 4;
+  declare declared: number;
+  abstract kind: string;
+  constructor() { this.written = 1; }
+}
+declare const store: Store;
+store.handler();
+`},
+			want: []string{"Property Store.unused is never used", "Property Store.unusedStatic is never used", "Property Store.self is never used"},
+		},
+		{
 			name: "calls from test files count",
 			files: map[string]string{
 				"store.ts": `

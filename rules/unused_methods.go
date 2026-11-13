@@ -13,9 +13,11 @@ import (
 	"github.com/microsoft/typescript-go/x/slop-police/lint"
 )
 
-// unused-methods reports class methods and accessors (with a body) that are
-// never referenced outside their own bodies, so recursion isn't a use. A
-// member counts as used when:
+// unused-methods reports class methods and accessors (with a body) and class
+// fields that are never referenced outside their own bodies or initializers,
+// so recursion isn't a use. Fields with decorators, which a framework may
+// read, and declare and abstract fields aren't checked. A member counts as
+// used when:
 //   - some identifier or string literal with its name resolves to it (or to
 //     a member it implements or overrides),
 //   - it implements or overrides a member declared outside the analyzed
@@ -447,7 +449,7 @@ func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[st
 		}
 		for _, declaration := range symbol.Declarations {
 			switch declaration.Kind {
-			case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor, ast.KindMethodSignature, ast.KindPropertySignature:
+			case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor, ast.KindPropertyDeclaration, ast.KindMethodSignature, ast.KindPropertySignature:
 				for _, key := range membersByDeclaration[keyOfDeclaration(declaration)] {
 					if !isInsideMember(node, key) {
 						used.add(key)
@@ -704,7 +706,7 @@ func isClassMemberDeclarationName(node *ast.Node) bool {
 		return false
 	}
 	switch member.Kind {
-	case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor:
+	case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor, ast.KindPropertyDeclaration:
 		return isClassLike(member.Parent) && member.Name() == node
 	}
 	return false
@@ -787,6 +789,8 @@ func isCheckedClassMember(node *ast.Node) bool {
 	switch node.Kind {
 	case ast.KindMethodDeclaration, ast.KindGetAccessor, ast.KindSetAccessor:
 		return isClassLike(node.Parent) && node.Body() != nil
+	case ast.KindPropertyDeclaration:
+		return isClassLike(node.Parent) && !ast.HasDecorators(node) && !hasModifier(node, ast.KindDeclareKeyword) && !hasModifier(node, ast.KindAbstractKeyword)
 	}
 	return false
 }
@@ -807,6 +811,8 @@ func memberKind(node *ast.Node) string {
 		return "Getter"
 	case ast.KindSetAccessor:
 		return "Setter"
+	case ast.KindPropertyDeclaration:
+		return "Property"
 	}
 	return "Method"
 }
