@@ -94,6 +94,6 @@ jobs:
           prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
           git log --reverse --invert-grep --grep '^Release ' \
             --format="- [%s]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/%H)" "$prev..$GITHUB_REF_NAME" > notes.md
-          gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
         env:
           GH_TOKEN: ${{ github.token }}
