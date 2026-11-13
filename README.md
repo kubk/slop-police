@@ -358,6 +358,15 @@ const links = {
 open(links.docs)
 ```
 
+## Why not ESLint / Oxlint / tsgolint?
+
+Because these tools are fundamentally limited. They run one file at a time so there's no way to detect:
+
+- A method, export or object key is unused only if nothing in any other file uses it
+- A helper AI rewrote instead of reusing lives in a different file from the original
+
+slop-police links every usage across all your projects first, then reports. See the [comparison](#comparison-with-other-tools) below.
+
 ## Comparison with other tools
 
 |                                            | slop-police | ESLint | Sonar | knip | jscpd |
