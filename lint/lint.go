@@ -2,6 +2,7 @@ package lint
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -65,7 +66,9 @@ func errorExitCode(err error) int {
 // suppressed by ignore comments.
 func Lint(root string, config *Config, timing *Timing) (results []Result, err error) {
 	defer recoverCrash(&err)
-	ctx, err := newContext(newProjectSession(root), config, timing)
+	requests, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, err := newContext(requests, newProjectSession(root), config, timing)
 	if err != nil {
 		return nil, err
 	}

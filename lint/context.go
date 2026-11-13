@@ -86,6 +86,9 @@ type Context struct {
 	HasEntries bool
 
 	filesByPath map[tspath.Path]*File
+	// requests is the context of the run's checker requests (see
+	// takeCheckers).
+	requests context.Context
 	// missingImports are relative imports of files that don't exist, which
 	// no-unresolved-import reports (see checkImports).
 	missingImports []Finding
@@ -117,9 +120,14 @@ func newProjectSession(root string) *project.Session {
 // does (one project session, all projects opened in one request) and
 // collects the analyzed files: TypeScript sources among the projects' root
 // files, each owned by the first project that lists it, minus ignored ones.
-func newContext(session *project.Session, config *Config, timing *Timing) (*Context, error) {
+//
+// The run's checker requests are made with requests, which the caller cancels
+// when the run is over: the checker pools keep a request's checker
+// association until its context is done, and until then the context keeps
+// the pools, and so the programs, reachable.
+func newContext(requests context.Context, session *project.Session, config *Config, timing *Timing) (*Context, error) {
 	root := session.GetCurrentDirectory()
-	ctx := &Context{Timing: timing, HasEntries: len(config.Entry) > 0, filesByPath: map[tspath.Path]*File{}}
+	ctx := &Context{Timing: timing, HasEntries: len(config.Entry) > 0, filesByPath: map[tspath.Path]*File{}, requests: requests}
 	request := &project.APISnapshotRequest{OpenProjects: &collections.Set[string]{}}
 	configPaths := make([]string, len(config.Projects))
 	for i, projectPath := range config.Projects {
@@ -241,10 +249,6 @@ func (c *Context) ProjectsContaining(sf *ast.SourceFile) []*Project {
 	return result
 }
 
-// runContext is never cancelled: the checker pool keeps a request's checker
-// association until its context is done.
-var runContext, _ = context.WithCancel(context.Background())
-
 // checkerCount is how many checkers the project's analyzed files pay for.
 func (p *Project) checkerCount() int {
 	return max(1, min((len(p.files)+FilesPerChecker-1)/FilesPerChecker, Workers))
@@ -277,7 +281,7 @@ func (c *Context) takeCheckers(p *Project) {
 	p.releases = make([]func(), count)
 	p.checkerCtx = make([]context.Context, count)
 	for i := range count {
-		p.checkerCtx[i] = core.WithRequestID(runContext, fmt.Sprintf("slop-police:%s:%d", p.ConfigPath, i))
+		p.checkerCtx[i] = core.WithRequestID(c.requests, fmt.Sprintf("slop-police:%s:%d", p.ConfigPath, i))
 		p.checkers[i], p.releases[i] = p.Program.GetTypeChecker(p.checkerCtx[i])
 	}
 }

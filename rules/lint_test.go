@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -114,6 +115,29 @@ func TestUsagesAcrossProjectsWithReleasedCheckers(t *testing.T) {
 	lint.Workers, lint.MemoryBudget = 1, 0
 	defer func() { lint.Workers, lint.MemoryBudget = workers, budget }()
 	checkUsagesAcrossProjects(t)
+}
+
+// Not parallel: it measures the heap. A run's programs used to stay reachable
+// after it, which added up to gigabytes over this package's tests.
+func TestRunsAreCollected(t *testing.T) {
+	checkUsagesAcrossProjects(t) // allocates what's allocated once
+	before := liveHeap()
+	const runs = 8
+	for range runs {
+		checkUsagesAcrossProjects(t)
+	}
+	// A run that stays reachable keeps more than 20 MB.
+	if grown := (int64(liveHeap()) - int64(before)) >> 20; grown > 50 {
+		t.Errorf("the heap grew by %d MB over %d runs", grown, runs)
+	}
+}
+
+// liveHeap is the size of the heap's reachable objects.
+func liveHeap() uint64 {
+	runtime.GC()
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	return stats.HeapAlloc
 }
 
 func checkUsagesAcrossProjects(t *testing.T) {

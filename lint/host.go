@@ -28,7 +28,9 @@ import (
 //   - slopPolice/finish takes the plugin rules' findings, waits for the
 //     built-in rules and returns the report.
 func Serve(root string, in io.ReadCloser, out io.WriteCloser, timing *Timing) error {
-	h := &host{Session: api.NewSession(newProjectSession(root), &api.SessionOptions{UseBinaryResponses: true}), timing: timing}
+	requests, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h := &host{Session: api.NewSession(newProjectSession(root), &api.SessionOptions{UseBinaryResponses: true}), timing: timing, requests: requests}
 	defer h.Close()
 	transport := api.NewStdioTransport(in, out)
 	defer transport.Close()
@@ -41,7 +43,8 @@ func Serve(root string, in io.ReadCloser, out io.WriteCloser, timing *Timing) er
 
 type host struct {
 	*api.Session
-	timing *Timing
+	timing   *Timing
+	requests context.Context // for the run's checker requests (see newContext)
 
 	config  *Config
 	rules   []EnabledRule
@@ -115,7 +118,7 @@ func (h *host) start(params *startParams) (*startResult, error) {
 	config, err := LoadConfig(session.GetCurrentDirectory(), pluginRules)
 	var ctx *Context
 	if err == nil {
-		ctx, err = newContext(session, config, h.timing)
+		ctx, err = newContext(h.requests, session, config, h.timing)
 	}
 	if err != nil {
 		return &startResult{Error: err.Error(), ExitCode: errorExitCode(err)}, nil
