@@ -120,17 +120,22 @@ func checkUnusedClassMembers(ctx *lint.Context, options lint.Options) []lint.Fin
 	for _, key := range external {
 		used.add(key)
 	}
+	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
+		collectReferencedMembers(file, ch, names, membersByDeclaration, used)
+	})
+	phase("referenced members")
+
+	structuralFiles := filesWithUnusedCandidateClasses(ctx, candidates, used)
 	classNames := map[string]bool{}
 	for _, c := range candidates {
-		if name := c.node.Parent.Name(); name != nil {
+		if name := c.node.Parent.Name(); name != nil && !used.has(c.key) {
 			classNames[name.Text()] = true
 		}
 	}
-	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
-		collectReferencedMembers(file, ch, names, membersByDeclaration, used)
+	ctx.ForEachFile(structuralFiles, func(file *lint.File, ch *checker.Checker) {
 		collectStructurallyUsedMembers(file, ch, used, classNames)
 	})
-	phase("referenced members and structural uses")
+	phase(fmt.Sprintf("structural uses (%d files)", len(structuralFiles)))
 
 	var remaining []*memberCandidate
 	for _, c := range candidates {
@@ -476,13 +481,14 @@ func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[st
 //
 // Checking an expression for its type is slow, so the instance's class is
 // found from its symbols where possible. Only files that name a class with
-// candidates, which can narrow a value to it or cast it, also get their
+// unused members, which can narrow a value to it or cast it, also get their
 // other expressions checked.
 //
-// It runs in the file's visit for collectReferencedMembers, not in a pass
-// after it over the files that name a class whose candidates are still
-// unused: a run over its memory budget builds the checkers again for every
-// pass (see lint.MemoryBudget).
+// It is a pass of its own, after collectReferencedMembers has seen every
+// file: most classes have no unused member left by then, so few files are
+// visited and fewer are checked. In the same visit it has to check every
+// file that names a class with candidates, which is slower wherever the run
+// stays under its memory budget (see lint.MemoryBudget).
 func collectStructurallyUsedMembers(file *lint.File, ch *checker.Checker, used *usage, classNames map[string]bool) {
 	namesClass := false
 	for name := range file.Source.GetNameTable() {
@@ -699,6 +705,28 @@ func unionMembers(t *checker.Type) []*checker.Type {
 		return t.Types()
 	}
 	return []*checker.Type{t}
+}
+
+// filesWithUnusedCandidateClasses returns the files of projects whose program
+// contains a class with an unused candidate. A checker only produces classes
+// declared in its own program, so instances can't be used structurally
+// elsewhere.
+func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*memberCandidate, used *usage) []*lint.File {
+	relevant := map[*lint.Project]bool{}
+	for _, c := range candidates {
+		if !used.has(c.key) {
+			for _, p := range ctx.ProjectsContaining(c.file.Source) {
+				relevant[p] = true
+			}
+		}
+	}
+	var files []*lint.File
+	for _, f := range ctx.Files {
+		if relevant[f.Project] {
+			files = append(files, f)
+		}
+	}
+	return files
 }
 
 // collectRelatedReferences marks the candidates that find-all-references

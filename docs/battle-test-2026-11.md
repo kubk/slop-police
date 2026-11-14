@@ -187,13 +187,21 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
      | Structural uses in the visit for referenced members  | 7.1–7.5   | 1.28–1.34       | 0.92    | 0.34          |
      | Calls that return no instance aren't type-checked    | 6.8–7.0   | 1.27–1.30       | 0.92    | 0.34          |
 
-     With `SLOP_POLICE_MEMORY_GB=8` the last row takes 4.9–5.0 s and 1.8 GB on tldraw. Of the 132 s, the find-all-references requests took 125 s. The run's CPU profile has 255 s: 141 s in the GC and 100 s in the search itself.
+     The table is 0.3.26: the release after it has the structural uses in a pass of their own again (see below), which is the row before it plus the last one's gain. With `SLOP_POLICE_MEMORY_GB=8` the last row takes 4.9–5.0 s and 1.8 GB on tldraw. Of the 132 s, the find-all-references requests took 125 s. The run's CPU profile has 255 s: 141 s in the GC and 100 s in the search itself.
      - `collectRelatedReferences` in `rules/unused_class_members.go` is the search now. It visits each file once, resolves the identifiers named like a remaining candidate, and relates them the way find-all-references does (`memberRelations`). `ForEachProgramFile` in `lint/context.go` gives it the files of a program, which include the ones outside the analyzed files.
      - Programs that share a candidate's file share most of its other files too. A file is searched for a group of candidates in one of the group's programs, the one whose project analyzes it when there is one (`memberSearchGroup`).
      - `forEachChecker` in `lint/context.go` hands the checkers of all projects to the workers from one queue. With batches of projects, the workers waited for the slowest checker of each batch.
-     - The structural uses were a pass of their own over the files that name a class. They run in the first visit of each file now, so a run over its budget builds the checkers one time less.
+     - 0.3.26 ran the structural uses in the first visit of each file, where they had been a pass of their own, so that a run over its budget built the checkers one time less. That was taken back after 0.3.26, because it slowed down the runs that stay under their budget. In the first visit the rule doesn't know yet which classes will have unused members left, so it checks the expressions of every file that names a class with candidates. As a pass of its own it visits only the projects with such a class, and checks only the files that name one. On memocard-private (691 files, 5 tsconfigs, through the launcher with its plugin), where the first visit leaves almost nothing unused, medians of five interleaved runs:
+
+       | Budget                             | 0.3.25          | 0.3.26          | Structural uses in their own pass |
+       | ---------------------------------- | --------------- | --------------- | --------------------------------- |
+       | 4 GB (the default on 16 GB)        | 2.42 s, 1.00 GB | 2.54 s, 1.05 GB | 2.34 s, 1.00 GB                   |
+       | 1 GB (the default on this sandbox) | 2.75 s, 1.00 GB | 3.65 s, 1.12 GB | 2.62 s, 1.00 GB                   |
+
+       With the 1 GB budget, 0.3.26's extra memory took the run over the budget, and the rules after it built their checkers again. tldraw pays for the pass with its 1 GB budget, 8.2 s instead of 7.2 s, and nothing with one of 8 GB. Measure a change to the rule on a repository like memocard too, where the rule finds nothing: tldraw and vite alone didn't show this.
+
      - A structural use needs the type of the expression, and checking a call for it infers type arguments and checks the arguments. `mayBeInstance` and `returnsNoInstance` skip the expressions that can't be an instance from their syntax or from the signatures of the called function: 21,300 checked calls became 2,315 on tldraw.
-     - What is left on tldraw is about 5 s of the rule in a 6.9 s run: about 3 s for the first visit and about 2 s for the related references. Most of it is the checker resolving calls. The run does four GC cycles of 0.7–0.9 s once it is over the budget.
+     - What is left on tldraw is about 6 s of the rule in an 8.2 s run: about 4 s for the first visit and the structural uses, and about 2 s for the related references. Most of it is the checker resolving calls. The run does four GC cycles of 0.7–0.9 s once it is over the budget.
      - Tried and not kept:
        - Searching an analyzed file only in the program of its project: 6% faster, but wrong when another program resolves the file's imports to other files (fixture `s4-paths-differ`).
        - One visit of each file for all rules: the time became bimodal (6.1–7.7 s against 6.5–7.5 s) and the peak rose by 60 MB.
@@ -206,7 +214,7 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
      - `SLOP_POLICE_PROFILE=<dir>` writes `cpu.pprof` and `heap.pprof`. The samples have a `rule` label, since the stacks are cut off below the rule's functions: `go tool pprof -tagfocus=rule=unused-class-members`.
 
    - **Still to look at:**
-     - With `unused-class-members` on, a run over its budget still builds the checkers twice, once for each of the rule's two visits. tldraw takes 6.9 s with a 1 GB budget and 4.9 s with one of 8 GB, where the checkers are kept and the GC stays off. openbot, where releasing checkers doubled the time, wasn't measured again.
+     - With `unused-class-members` on, a run over its budget still builds the checkers three times, once for each of the rule's visits. tldraw takes 8.2 s with a 1 GB budget and about 5 s with one of 8 GB, where the checkers are kept and the GC stays off. The structural uses can't join the first visit as they are (see above): they would need a cheap way to tell which files to check before the first visit is over. openbot, where releasing checkers doubled the time, wasn't measured again.
      - Runs in parallel each spend a quarter of the machine before they start saving. Give them a `SLOP_POLICE_MEMORY_GB`.
      - Reading the memory on Linux (`/proc/meminfo` and the cgroup limits) has a test for the parsing, but wasn't run on Linux.
      - The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.
