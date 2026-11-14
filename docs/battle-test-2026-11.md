@@ -187,16 +187,16 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
      | Structural uses in the visit for referenced members  | 7.1–7.5   | 1.28–1.34       | 0.92    | 0.34          |
      | Calls that return no instance aren't type-checked    | 6.8–7.0   | 1.27–1.30       | 0.92    | 0.34          |
 
-     The table is 0.3.26: the release after it has the structural uses in a pass of their own again (see below), which is the row before it plus the last one's gain. With `SLOP_POLICE_MEMORY_GB=8` the last row takes 4.9–5.0 s and 1.8 GB on tldraw. Of the 132 s, the find-all-references requests took 125 s. The run's CPU profile has 255 s: 141 s in the GC and 100 s in the search itself.
+     The table is 0.3.26: 0.3.27 has the structural uses in a pass of their own again (see below), which is the row before it plus the last one's gain. With `SLOP_POLICE_MEMORY_GB=8` the last row takes 4.9–5.0 s and 1.8 GB on tldraw. Of the 132 s, the find-all-references requests took 125 s. The run's CPU profile has 255 s: 141 s in the GC and 100 s in the search itself.
      - `collectRelatedReferences` in `rules/unused_class_members.go` is the search now. It visits each file once, resolves the identifiers named like a remaining candidate, and relates them the way find-all-references does (`memberRelations`). `ForEachProgramFile` in `lint/context.go` gives it the files of a program, which include the ones outside the analyzed files.
      - Programs that share a candidate's file share most of its other files too. A file is searched for a group of candidates in one of the group's programs, the one whose project analyzes it when there is one (`memberSearchGroup`).
      - `forEachChecker` in `lint/context.go` hands the checkers of all projects to the workers from one queue. With batches of projects, the workers waited for the slowest checker of each batch.
-     - 0.3.26 ran the structural uses in the first visit of each file, where they had been a pass of their own, so that a run over its budget built the checkers one time less. That was taken back after 0.3.26, because it slowed down the runs that stay under their budget. In the first visit the rule doesn't know yet which classes will have unused members left, so it checks the expressions of every file that names a class with candidates. As a pass of its own it visits only the projects with such a class, and checks only the files that name one. On memocard-private (691 files, 5 tsconfigs, through the launcher with its plugin), where the first visit leaves almost nothing unused, medians of five interleaved runs:
+     - 0.3.26 ran the structural uses in the first visit of each file, where they had been a pass of their own, so that a run over its budget built the checkers one time less. 0.3.27 took that back, because it slowed down the runs that stay under their budget. In the first visit the rule doesn't know yet which classes will have unused members left, so it checks the expressions of every file that names a class with candidates. As a pass of its own it visits only the projects with such a class, and checks only the files that name one. On memocard-private (691 files, 5 tsconfigs, through the launcher with its plugin), where the first visit leaves almost nothing unused, medians of five interleaved runs:
 
-       | Budget                             | 0.3.25          | 0.3.26          | Structural uses in their own pass |
-       | ---------------------------------- | --------------- | --------------- | --------------------------------- |
-       | 4 GB (the default on 16 GB)        | 2.42 s, 1.00 GB | 2.54 s, 1.05 GB | 2.34 s, 1.00 GB                   |
-       | 1 GB (the default on this sandbox) | 2.75 s, 1.00 GB | 3.65 s, 1.12 GB | 2.62 s, 1.00 GB                   |
+       | Budget                             | 0.3.25          | 0.3.26          | 0.3.27          |
+       | ---------------------------------- | --------------- | --------------- | --------------- |
+       | 4 GB (the default on 16 GB)        | 2.42 s, 1.00 GB | 2.54 s, 1.05 GB | 2.34 s, 1.00 GB |
+       | 1 GB (the default on this sandbox) | 2.75 s, 1.00 GB | 3.65 s, 1.12 GB | 2.62 s, 1.00 GB |
 
        With the 1 GB budget, 0.3.26's extra memory took the run over the budget, and the rules after it built their checkers again. tldraw pays for the pass with its 1 GB budget, 8.2 s instead of 7.2 s, and nothing with one of 8 GB. Measure a change to the rule on a repository like memocard too, where the rule finds nothing: tldraw and vite alone didn't show this.
 
