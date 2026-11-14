@@ -18,6 +18,18 @@ func forEachNode(root *ast.Node, fn func(node *ast.Node)) {
 	visit(root)
 }
 
+// forEachNodeAndJSDoc walks the file like forEachNode, and the JSDoc comments
+// of its nodes: the names in {@link a.b}, @see a.b and @type {a["b"]}.
+func forEachNodeAndJSDoc(source *ast.SourceFile, fn func(node *ast.Node)) {
+	var visit func(node *ast.Node) bool
+	visit = func(node *ast.Node) bool {
+		fn(node)
+		ast.ForEachChildAndJSDoc(node, source, visit)
+		return false
+	}
+	visit(source.AsNode())
+}
+
 // resolveSymbol is getSymbolAtLocation, followed by getAliasedSymbol for an
 // alias symbol.
 func resolveSymbol(ch *checker.Checker, node *ast.Node) *ast.Symbol {

@@ -286,12 +286,12 @@ func (c *Context) takeCheckers(p *Project) {
 	}
 }
 
-// releaseCheckers returns the checkers of every project outside keep to
+// releaseCheckers returns the checkers of every project that keep rejects to
 // their pools, which dispose them (see newProjectSession), so that their
 // state can be collected.
-func (c *Context) releaseCheckers(keep []*Project) {
+func (c *Context) releaseCheckers(keep func(p *Project) bool) {
 	for _, p := range c.Projects {
-		if p.checkers == nil || slices.Contains(keep, p) {
+		if p.checkers == nil || keep(p) {
 			continue
 		}
 		for _, release := range p.releases {
@@ -321,7 +321,7 @@ func (c *Context) forEachBatch(projects []*Project, fn func(batch []*Project)) {
 		batch := projects[start:end]
 		start = end
 		if heapSize() > MemoryBudget {
-			c.releaseCheckers(batch)
+			c.releaseCheckers(func(p *Project) bool { return slices.Contains(batch, p) })
 		}
 		for _, p := range batch {
 			c.takeCheckers(p)
@@ -330,43 +330,113 @@ func (c *Context) forEachBatch(projects []*Project, fn func(batch []*Project)) {
 	}
 }
 
-// ForEachFile runs fn for every file in parallel, projects in batches (see
-// forEachBatch). Each file of a project goes to the same checker as its
-// neighbours, and a checker is used by one goroutine at a time.
+// ForEachFile runs fn for every file in parallel (see forEachChecker). Each
+// file of a project goes to the same checker as its neighbours, and a
+// checker is used by one goroutine at a time.
 func (c *Context) ForEachFile(files []*File, fn func(f *File, ch *checker.Checker)) {
-	byProject := map[*Project][][]*File{} // files by checker index
-	var projects []*Project
+	work := checkerWork{}
 	for _, f := range files {
-		p := f.Project
-		if byProject[p] == nil {
-			byProject[p] = make([][]*File, p.checkerCount())
-			projects = append(projects, p)
-		}
-		i := (f.projectIndex / chunkSize) % len(byProject[p])
-		byProject[p][i] = append(byProject[p][i], f)
+		work.add(f.Project, f.projectIndex, programFile{f, f.Source})
 	}
+	c.forEachChecker(work, func(_ *Project, pf programFile, ch *checker.Checker) { fn(pf.file, ch) })
+}
+
+// ForEachProgramFile runs fn like ForEachFile, but for every file that
+// include accepts in the program of each of the projects. A program also has
+// the files that its project's files import: files of other projects,
+// ignored files and declaration files. source is the program's parse of the
+// file, which another program can have another one of.
+func (c *Context) ForEachProgramFile(projects []*Project, include func(p *Project, source *ast.SourceFile) bool, fn func(p *Project, source *ast.SourceFile, ch *checker.Checker)) {
+	work := checkerWork{}
+	for _, p := range projects {
+		if work.byProject[p] != nil {
+			continue
+		}
+		for i, source := range p.Program.GetSourceFiles() {
+			if !include(p, source) {
+				continue
+			}
+			// The project's own files go to the checkers that ForEachFile
+			// checks them with.
+			f := c.filesByPath[source.Path()]
+			if f != nil && f.Project == p {
+				i = f.projectIndex
+			}
+			work.add(p, i, programFile{f, source})
+		}
+	}
+	c.forEachChecker(work, func(p *Project, pf programFile, ch *checker.Checker) { fn(p, pf.source, ch) })
+}
+
+// checkerWork is the files to visit with each checker of the projects.
+type checkerWork struct {
+	projects  []*Project
+	byProject map[*Project][][]programFile // by checker index
+}
+
+// programFile is a program's parse of a file, and the file if it's analyzed.
+type programFile struct {
+	file   *File
+	source *ast.SourceFile
+}
+
+// add adds the file at index in its project: neighbours go to the same
+// checker.
+func (w *checkerWork) add(p *Project, index int, pf programFile) {
+	if w.byProject == nil {
+		w.byProject = map[*Project][][]programFile{}
+	}
+	if w.byProject[p] == nil {
+		w.byProject[p] = make([][]programFile, p.checkerCount())
+		w.projects = append(w.projects, p)
+	}
+	i := (index / chunkSize) % len(w.byProject[p])
+	w.byProject[p][i] = append(w.byProject[p][i], pf)
+}
+
+// forEachChecker runs fn for the files of each checker in work, one
+// goroutine per checker, Workers checkers at a time. The checkers go to the
+// workers from one queue in project order, so that a worker that finishes a
+// small project starts on the next one at once.
+//
+// The projects keep their checkers afterwards, like in forEachBatch. While
+// the heap is over MemoryBudget, a worker that starts on a checker first
+// releases the checkers of the projects that no worker is in the middle of.
+func (c *Context) forEachChecker(work checkerWork, fn func(p *Project, pf programFile, ch *checker.Checker)) {
 	type group struct {
 		project *Project
 		index   int
 	}
-	c.forEachBatch(projects, func(batch []*Project) {
-		var groups []group
-		for _, p := range batch {
-			for i, files := range byProject[p] {
-				if len(files) > 0 {
-					groups = append(groups, group{p, i})
-				}
+	var groups []group
+	started, pending := map[*Project]int{}, map[*Project]int{}
+	for _, p := range work.projects {
+		for i, files := range work.byProject[p] {
+			if len(files) > 0 {
+				groups = append(groups, group{p, i})
+				pending[p]++
 			}
 		}
-		c.Parallel(len(groups), func(gi int) {
-			g := groups[gi]
-			for _, f := range byProject[g.project][g.index] {
-				func() {
-					defer rethrow("", f)
-					fn(f, g.project.checkers[g.index])
-				}()
-			}
-		})
+	}
+	var mu sync.Mutex
+	c.Parallel(len(groups), func(gi int) {
+		g := groups[gi]
+		mu.Lock()
+		started[g.project]++
+		if heapSize() > MemoryBudget {
+			c.releaseCheckers(func(p *Project) bool { return started[p] > 0 && pending[p] > 0 })
+		}
+		c.takeCheckers(g.project)
+		ch := g.project.checkers[g.index]
+		mu.Unlock()
+		for _, pf := range work.byProject[g.project][g.index] {
+			func() {
+				defer rethrow("", pf.file)
+				fn(g.project, pf, ch)
+			}()
+		}
+		mu.Lock()
+		pending[g.project]--
+		mu.Unlock()
 	})
 }
 

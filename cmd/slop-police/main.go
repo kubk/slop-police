@@ -1,6 +1,7 @@
 // Command slop-police lints the TypeScript projects listed in
 // ./slop-police.json. It exits with 1 when there are errors, 2 for config
-// errors and 3 when it crashes. SLOP_POLICE_TIMING=1 prints phase timings to stderr.
+// errors and 3 when it crashes. SLOP_POLICE_TIMING=1 prints phase timings to stderr,
+// and SLOP_POLICE_PROFILE=<dir> writes CPU and heap profiles there.
 // SLOP_POLICE_MEMORY_GB sets how much memory it spends on speed before it
 // starts saving memory instead, a quarter of the machine's by default (see
 // tuneRuntime).
@@ -25,12 +26,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	stopProfile, err := startProfile()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	var timingOut io.Writer
 	if os.Getenv("SLOP_POLICE_TIMING") == "1" {
 		timingOut = os.Stderr
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--api" {
-		os.Exit(serve(os.Args[2:], lint.NewTiming(timingOut)))
+		code := serve(os.Args[2:], lint.NewTiming(timingOut))
+		stopProfile()
+		os.Exit(code)
 	}
 	root, err := os.Getwd()
 	if err != nil {
@@ -40,6 +48,7 @@ func main() {
 	stdout := bufio.NewWriter(os.Stdout)
 	code := lint.Run(root, stdout, os.Stderr, lint.NewTiming(timingOut))
 	stdout.Flush()
+	stopProfile()
 	os.Exit(code)
 }
 

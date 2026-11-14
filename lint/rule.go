@@ -41,7 +41,7 @@ type Report func(node *ast.Node, message string)
 //   - CheckFile: per file except test files, with the type checker that
 //     owns the file. Files run in parallel.
 //   - Check: whole program. Gets the Context and uses its helpers
-//     (ForEachFile, Parallel, AnyReference) for cross-file analyses. It
+//     (ForEachFile, ForEachProgramFile, Parallel) for cross-file analyses. It
 //     skips declarations in test files itself (File.IsTest).
 //
 // A plugin rule implements none: the npm launcher runs it in Node and sends

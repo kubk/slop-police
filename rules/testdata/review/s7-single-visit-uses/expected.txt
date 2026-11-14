@@ -1,0 +1,4 @@
+exit 1
+a.ts:10:3  error  unused-class-members  Method Point.unused is never used
+
+1 error, 0 warnings

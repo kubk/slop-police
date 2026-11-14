@@ -175,8 +175,38 @@ The fixed build was run on all 12 repos with the agents' final configs, after mo
 
      memo-card went from 1.26 GB and 1.04 s on 0.3.16 to 0.81 GB and 0.59 s.
 
+   - **0.3.26 makes `unused-class-members` resolve a name once per file.** The rule (the former `unused-methods`) sent one find-all-references request per candidate that the first pass left unused, and each request looked up every occurrence of the name in every file of every program with the candidate. These numbers are from a Linux sandbox with 2 CPUs and 4 GB (a budget of about 1 GB), with `unused-class-members` on, as max RSS, so they don't compare with the tables above. Medians of interleaved runs, with the same findings at every step (tldraw 719, vite 421):
+
+     | Step                                                 | tldraw, s | tldraw peak, GB | vite, s | vite peak, GB |
+     | ---------------------------------------------------- | --------- | --------------- | ------- | ------------- |
+     | 0.3.25                                               | 132       | 2.04            | 1.3–1.7 | 0.70          |
+     | One search per file for all names                    | 21.0      | 1.63            | 1.4–1.6 | 0.38          |
+     | A shared file is searched in one program             | 11.5      | 1.51            | 1.24    | 0.34          |
+     | Literals and primitive operators aren't type-checked | 8.9       | 1.37            |         |               |
+     | One queue of checkers across projects                | 7.7–8.2   | 1.27–1.30       | 0.99    | 0.33          |
+     | Structural uses in the visit for referenced members  | 7.1–7.5   | 1.28–1.34       | 0.92    | 0.34          |
+     | Calls that return no instance aren't type-checked    | 6.8–7.0   | 1.27–1.30       | 0.92    | 0.34          |
+
+     With `SLOP_POLICE_MEMORY_GB=8` the last row takes 4.9–5.0 s and 1.8 GB on tldraw. Of the 132 s, the find-all-references requests took 125 s. The run's CPU profile has 255 s: 141 s in the GC and 100 s in the search itself.
+     - `collectRelatedReferences` in `rules/unused_class_members.go` is the search now. It visits each file once, resolves the identifiers named like a remaining candidate, and relates them the way find-all-references does (`memberRelations`). `ForEachProgramFile` in `lint/context.go` gives it the files of a program, which include the ones outside the analyzed files.
+     - Programs that share a candidate's file share most of its other files too. A file is searched for a group of candidates in one of the group's programs, the one whose project analyzes it when there is one (`memberSearchGroup`).
+     - `forEachChecker` in `lint/context.go` hands the checkers of all projects to the workers from one queue. With batches of projects, the workers waited for the slowest checker of each batch.
+     - The structural uses were a pass of their own over the files that name a class. They run in the first visit of each file now, so a run over its budget builds the checkers one time less.
+     - A structural use needs the type of the expression, and checking a call for it infers type arguments and checks the arguments. `mayBeInstance` and `returnsNoInstance` skip the expressions that can't be an instance from their syntax or from the signatures of the called function: 21,300 checked calls became 2,315 on tldraw.
+     - What is left on tldraw is about 5 s of the rule in a 6.9 s run: about 3 s for the first visit and about 2 s for the related references. Most of it is the checker resolving calls. The run does four GC cycles of 0.7–0.9 s once it is over the budget.
+     - Tried and not kept:
+       - Searching an analyzed file only in the program of its project: 6% faster, but wrong when another program resolves the file's imports to other files (fixture `s4-paths-differ`).
+       - One visit of each file for all rules: the time became bimodal (6.1–7.7 s against 6.5–7.5 s) and the peak rose by 60 MB.
+       - A relations cache per checker: 2.6 GB.
+       - A full check of each file before the queries (`GetDiagnostics`): slower, and 0.6 GB more.
+       - One checker per project with the largest first: a higher peak for a gain within noise.
+       - A GC goal that follows the budget instead of GOGC=50: no gain.
+       - Searching for all candidate names in the first visit, to drop the second: 3.9 s instead of 1.9 s for the search.
+       - Skipping names whose candidates are all used: wrong for aliases such as `export import bar = A.foo`.
+     - `SLOP_POLICE_PROFILE=<dir>` writes `cpu.pprof` and `heap.pprof`. The samples have a `rule` label, since the stacks are cut off below the rule's functions: `go tool pprof -tagfocus=rule=unused-class-members`.
+
    - **Still to look at:**
-     - With `unused-methods` on, releasing checkers doubles openbot's time. Ideas: start a pass from the batch that the pass before ended with, whose checkers are still there, or merge the rule's passes.
+     - With `unused-class-members` on, a run over its budget still builds the checkers twice, once for each of the rule's two visits. tldraw takes 6.9 s with a 1 GB budget and 4.9 s with one of 8 GB, where the checkers are kept and the GC stays off. openbot, where releasing checkers doubled the time, wasn't measured again.
      - Runs in parallel each spend a quarter of the machine before they start saving. Give them a `SLOP_POLICE_MEMORY_GB`.
      - Reading the memory on Linux (`/proc/meminfo` and the cgroup limits) has a test for the parsing, but wasn't run on Linux.
      - The ASTs and module resolution of all programs stay live for the whole run, since later passes and plugins read them.

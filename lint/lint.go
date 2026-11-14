@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"sync"
@@ -103,6 +104,7 @@ func runRules(ctx *Context, rules []EnabledRule) (perRule [][]Finding, err error
 		wg.Go(func() {
 			defer recoverCrash(&syntaxErr)
 			start := time.Now()
+			pprof.SetGoroutineLabels(pprof.WithLabels(context.Background(), pprof.Labels("rule", "syntax rules")))
 			runSyntaxRules(ctx, rules, syntaxRules, perRule)
 			timing.Span("syntax rules", time.Since(start))
 		})
@@ -112,16 +114,20 @@ func runRules(ctx *Context, rules []EnabledRule) (perRule [][]Finding, err error
 	for i, enabled := range rules {
 		if enabled.Rule.Check != nil {
 			start := time.Now()
-			func() {
+			// The label tells the rules apart in a CPU profile, whose
+			// stacks are cut off below the rule's functions.
+			pprof.Do(context.Background(), pprof.Labels("rule", enabled.Rule.Name), func(context.Context) {
 				defer rethrow(enabled.Rule.Name, nil)
 				perRule[i] = enabled.Rule.Check(ctx, enabled.Options)
-			}()
+			})
 			timing.Span(enabled.Rule.Name, time.Since(start))
 		}
 	}
 	if len(fileRules) > 0 {
 		start := time.Now()
-		runFileRules(ctx, rules, fileRules, perRule)
+		pprof.Do(context.Background(), pprof.Labels("rule", "file rules"), func(context.Context) {
+			runFileRules(ctx, rules, fileRules, perRule)
+		})
 		timing.Span("file rules", time.Since(start))
 	}
 	wg.Wait()

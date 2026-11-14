@@ -25,10 +25,13 @@ import (
 //   - it is named in Pick<Class, "name">,
 //   - an instance is passed, returned, stored or asserted where a type (other
 //     than its class) with a property of its name is expected,
-//   - or find-all-references finds a reference outside class member names.
+//   - or a name refers to it the way find-all-references relates names: a
+//     property of an object literal or a JSX attribute that has to fit a
+//     type with the member, the variable of const { name } = instance, a
+//     member of a union, a member that it overrides or implements.
 //
-// It is optional: it takes most of a run's time and memory on a big
-// repository, where it resolves every reference to every class member.
+// It is optional: it is most of a run's time on a big repository, where it
+// resolves every name that a class member has.
 func init() {
 	lint.Register(&lint.Rule{
 		Name:           "unused-class-members",
@@ -117,22 +120,17 @@ func checkUnusedClassMembers(ctx *lint.Context, options lint.Options) []lint.Fin
 	for _, key := range external {
 		used.add(key)
 	}
-	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
-		collectReferencedMembers(file, ch, names, membersByDeclaration, used)
-	})
-	phase("referenced members")
-
-	structuralFiles := filesWithUnusedCandidateClasses(ctx, candidates, used)
 	classNames := map[string]bool{}
 	for _, c := range candidates {
-		if name := c.node.Parent.Name(); name != nil && !used.has(c.key) {
+		if name := c.node.Parent.Name(); name != nil {
 			classNames[name.Text()] = true
 		}
 	}
-	ctx.ForEachFile(structuralFiles, func(file *lint.File, ch *checker.Checker) {
+	ctx.ForEachFile(ctx.Files, func(file *lint.File, ch *checker.Checker) {
+		collectReferencedMembers(file, ch, names, membersByDeclaration, used)
 		collectStructurallyUsedMembers(file, ch, used, classNames)
 	})
-	phase(fmt.Sprintf("structural uses (%d files)", len(structuralFiles)))
+	phase("referenced members and structural uses")
 
 	var remaining []*memberCandidate
 	for _, c := range candidates {
@@ -140,12 +138,19 @@ func checkUnusedClassMembers(ctx *lint.Context, options lint.Options) []lint.Fin
 			remaining = append(remaining, c)
 		}
 	}
-	referenced := hasReferencesOutsideDeclaration(ctx, remaining)
-	phase(fmt.Sprintf("find references (%d)", len(remaining)))
+	exported := collectRelatedReferences(ctx, remaining, used)
+	phase(fmt.Sprintf("related references (%d)", len(remaining)))
+	referenced := hasReferencesOutsideDeclaration(ctx, exported)
+	phase(fmt.Sprintf("find references (%d)", len(exported)))
+	for i, c := range exported {
+		if referenced[i] {
+			used.add(c.key)
+		}
+	}
 
 	var findings []lint.Finding
-	for i, c := range remaining {
-		if referenced[i] {
+	for _, c := range remaining {
+		if used.has(c.key) {
 			continue
 		}
 		className := "<anonymous>"
@@ -424,7 +429,9 @@ func implementedTypes(class *ast.Node) []*ast.Node {
 }
 
 // collectReferencedMembers resolves every identifier and string literal of
-// the file named like a candidate, and every Pick<Class, "names">.
+// the file named like a candidate, and every Pick<Class, "names">. A name
+// whose candidates are all used is resolved too: an alias named like one
+// candidate can resolve to another, as in export import bar = A.foo.
 func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[string]bool, membersByDeclaration map[declKey][]memberKey, used *usage) {
 	forEachNode(file.Source.AsNode(), func(node *ast.Node) {
 		if isPickTypeReference(node) {
@@ -469,8 +476,13 @@ func collectReferencedMembers(file *lint.File, ch *checker.Checker, names map[st
 //
 // Checking an expression for its type is slow, so the instance's class is
 // found from its symbols where possible. Only files that name a class with
-// unused members, which can narrow a value to it or cast it, also get their
+// candidates, which can narrow a value to it or cast it, also get their
 // other expressions checked.
+//
+// It runs in the file's visit for collectReferencedMembers, not in a pass
+// after it over the files that name a class whose candidates are still
+// unused: a run over its memory budget builds the checkers again for every
+// pass (see lint.MemoryBudget).
 func collectStructurallyUsedMembers(file *lint.File, ch *checker.Checker, used *usage, classNames map[string]bool) {
 	namesClass := false
 	for name := range file.Source.GetNameTable() {
@@ -496,7 +508,7 @@ func collectStructurallyUsedMembers(file *lint.File, ch *checker.Checker, used *
 			return
 		}
 		class := instanceClass(ch, expression)
-		if class == nil && namesClass && mayBeInstance(expression) {
+		if class == nil && namesClass && mayBeInstance(expression) && !returnsNoInstance(ch, expression) {
 			class = classNodeForType(ch.GetTypeAtLocation(expression))
 		}
 		// A class whose candidates are all used has nothing left to mark.
@@ -559,16 +571,74 @@ func instanceClass(ch *checker.Checker, expression *ast.Node) *ast.Node {
 }
 
 // mayBeInstance reports whether expression's value can be a class instance:
-// it isn't a function expression, whose type is the function's own, or a
-// literal.
+// it isn't a function expression, whose type is the function's own, a
+// literal, or an operator whose result is a primitive or one of its operands
+// that can't be an instance. An array literal is an array, and an object
+// literal has a type of its own unless all it does is spread: the type of
+// { ...this } is this.
 func mayBeInstance(expression *ast.Node) bool {
 	switch expression.Kind {
+	case ast.KindParenthesizedExpression, ast.KindNonNullExpression:
+		return mayBeInstance(expression.Expression())
+	case ast.KindConditionalExpression:
+		conditional := expression.AsConditionalExpression()
+		return mayBeInstance(conditional.WhenTrue) || mayBeInstance(conditional.WhenFalse)
+	case ast.KindBinaryExpression:
+		binary := expression.AsBinaryExpression()
+		switch binary.OperatorToken.Kind {
+		case ast.KindBarBarToken, ast.KindQuestionQuestionToken, ast.KindBarBarEqualsToken, ast.KindQuestionQuestionEqualsToken:
+			return mayBeInstance(binary.Left) || mayBeInstance(binary.Right)
+		case ast.KindAmpersandAmpersandToken, ast.KindAmpersandAmpersandEqualsToken, ast.KindEqualsToken, ast.KindCommaToken:
+			return mayBeInstance(binary.Right)
+		}
+		return false
 	case ast.KindArrowFunction, ast.KindFunctionExpression, ast.KindStringLiteral, ast.KindNumericLiteral, ast.KindBigIntLiteral,
 		ast.KindNoSubstitutionTemplateLiteral, ast.KindTemplateExpression, ast.KindRegularExpressionLiteral,
-		ast.KindTrueKeyword, ast.KindFalseKeyword, ast.KindNullKeyword:
+		ast.KindTrueKeyword, ast.KindFalseKeyword, ast.KindNullKeyword, ast.KindArrayLiteralExpression,
+		ast.KindPrefixUnaryExpression, ast.KindPostfixUnaryExpression, ast.KindTypeOfExpression, ast.KindVoidExpression, ast.KindDeleteExpression:
 		return false
+	case ast.KindObjectLiteralExpression:
+		properties := expression.Properties()
+		return len(properties) > 0 && !slices.ContainsFunc(properties, func(property *ast.Node) bool { return property.Kind != ast.KindSpreadAssignment })
 	}
 	return true
+}
+
+// returnsNoInstance reports whether expression is a call that returns no
+// class instance whichever signature of the called function applies. Checking
+// the call for its type picks the signature and infers its type arguments,
+// which checks the arguments.
+func returnsNoInstance(ch *checker.Checker, expression *ast.Node) bool {
+	if expression.Kind != ast.KindCallExpression {
+		return false
+	}
+	switch expression.Expression().Kind {
+	case ast.KindSuperKeyword, ast.KindImportKeyword:
+		return false
+	}
+	signatures := ch.GetSignaturesOfType(ch.GetNonNullableType(ch.GetTypeAtLocation(expression.Expression())), checker.SignatureKindCall)
+	for _, signature := range signatures {
+		returned := ch.GetReturnTypeOfSignature(signature)
+		if classNodeForType(returned) != nil || len(signature.TypeParameters()) > 0 && canBecomeInstance(returned) {
+			return false
+		}
+	}
+	return len(signatures) > 0
+}
+
+// canBecomeInstance reports whether type arguments can make a class
+// instance's type of t, the return type of a generic function: they can of a
+// type parameter and of a type worked out from one, and they can reduce a
+// union to one of its types, unless a primitive type such as null stays in
+// it.
+func canBecomeInstance(t *checker.Type) bool {
+	switch {
+	case t.Flags()&(checker.TypeFlagsInstantiable|checker.TypeFlagsIntersection) != 0:
+		return true
+	case t.Flags()&checker.TypeFlagsUnion != 0:
+		return !slices.ContainsFunc(t.Types(), func(member *checker.Type) bool { return member.Flags()&checker.TypeFlagsPrimitive != 0 })
+	}
+	return false
 }
 
 // isClassOrAncestor reports whether ancestor is class or a class it extends.
@@ -631,31 +701,222 @@ func unionMembers(t *checker.Type) []*checker.Type {
 	return []*checker.Type{t}
 }
 
-// filesWithUnusedCandidateClasses returns the files of projects whose program
-// contains a class with an unused candidate. A checker only produces classes
-// declared in its own program, so instances can't be used structurally
-// elsewhere.
-func filesWithUnusedCandidateClasses(ctx *lint.Context, candidates []*memberCandidate, used *usage) []*lint.File {
-	relevant := map[*lint.Project]bool{}
+// collectRelatedReferences marks the candidates that find-all-references
+// for their names, in the programs with their files, finds a reference to in
+// an analyzed file, outside class member names and their own bodies. It
+// returns the unmarked candidates that an export refers to, like
+// export const { name } = instance: find-all-references goes on to the
+// imports of the export, and this doesn't (see hasReferencesOutsideDeclaration).
+//
+// It resolves the names that candidates have once per file, where one
+// find-all-references request per candidate looks up every occurrence of its
+// name in every file of every program with the candidate again. A file that
+// several programs share with a candidate's file is searched for the
+// candidate in one of them (see memberSearchGroup).
+func collectRelatedReferences(ctx *lint.Context, candidates []*memberCandidate, used *usage) []*memberCandidate {
+	owners := map[tspath.Path]*lint.Project{}
+	for _, file := range ctx.Files {
+		owners[file.Source.Path()] = file.Project
+	}
+	searches := map[*lint.Project]*memberSearch{}
+	var projects []*lint.Project
+	groups := map[string]*memberSearchGroup{}
+	scopes := map[memberKey]*ast.Node{}
 	for _, c := range candidates {
-		if !used.has(c.key) {
-			for _, p := range ctx.ProjectsContaining(c.file.Source) {
-				relevant[p] = true
+		var containing []*lint.Project
+		id := ""
+		for _, p := range ctx.ProjectsContaining(c.file.Source) {
+			if slices.Contains(containing, p) {
+				continue
+			}
+			containing = append(containing, p)
+			id += p.ConfigPath + "\x00"
+			if searches[p] == nil {
+				searches[p] = &memberSearch{keys: map[memberKey]bool{}, paths: map[tspath.Path]bool{}, byDeclaration: map[declKey][]memberKey{}}
+				projects = append(projects, p)
+			}
+			searches[p].keys[c.key] = true
+			searches[p].paths[c.file.Source.Path()] = true
+		}
+		group := groups[id]
+		if group == nil {
+			group = newMemberSearchGroup(containing)
+			groups[id] = group
+			for _, p := range containing {
+				searches[p].groups = append(searches[p].groups, group)
+			}
+		}
+		group.names[c.key.name] = true
+		// Find-all-references looks for a private property or method in
+		// its class declaration only (getSymbolScope).
+		if (c.node.Kind == ast.KindPropertyDeclaration || c.node.Kind == ast.KindMethodDeclaration) && hasModifier(c.node, ast.KindPrivateKeyword) {
+			if class := ast.FindAncestorKind(c.node, ast.KindClassDeclaration); class != nil {
+				scopes[c.key] = class
 			}
 		}
 	}
-	var files []*lint.File
-	for _, f := range ctx.Files {
-		if relevant[f.Project] {
-			files = append(files, f)
+
+	// What a reference has to relate to, to be one to a candidate: what the
+	// candidate's own name relates to.
+	ctx.ForEachProgramFile(projects, func(p *lint.Project, source *ast.SourceFile) bool {
+		return searches[p].paths[source.Path()]
+	}, func(p *lint.Project, source *ast.SourceFile, ch *checker.Checker) {
+		search := searches[p]
+		related := newMemberRelations(ch)
+		forEachNode(source.AsNode(), func(node *ast.Node) {
+			if !isCheckedClassMember(node) || node.Name().Kind != ast.KindIdentifier {
+				return
+			}
+			key := classMemberKey(node.Parent, node.Name().Text())
+			key.static = hasModifier(node, ast.KindStaticKeyword)
+			symbol := ch.GetSymbolAtLocation(node.Name())
+			if !search.keys[key] || symbol == nil {
+				return
+			}
+			related.forEach(node.Name(), symbol, func(symbol *ast.Symbol) {
+				search.mu.Lock()
+				defer search.mu.Unlock()
+				for _, declaration := range symbol.Declarations {
+					declaration := keyOfDeclaration(declaration)
+					if !slices.Contains(search.byDeclaration[declaration], key) {
+						search.byDeclaration[declaration] = append(search.byDeclaration[declaration], key)
+					}
+				}
+			})
+		})
+	})
+
+	var mu sync.Mutex
+	exported := map[memberKey]bool{}
+	ctx.ForEachProgramFile(projects, func(p *lint.Project, source *ast.SourceFile) bool {
+		// The library's files don't refer to the analyzed files' classes.
+		return !p.Program.IsSourceFileDefaultLibrary(source.Path()) && len(searches[p].groupsFor(p, source.Path(), owners)) > 0
+	}, func(p *lint.Project, source *ast.SourceFile, ch *checker.Checker) {
+		search := searches[p]
+		groups := search.groupsFor(p, source.Path(), owners)
+		related := newMemberRelations(ch)
+		analyzed := ctx.IsAnalyzedPath(source.Path())
+		forEachNodeAndJSDoc(source, func(node *ast.Node) {
+			switch node.Kind {
+			case ast.KindIdentifier, ast.KindStringLiteral, ast.KindNoSubstitutionTemplateLiteral:
+			default:
+				return
+			}
+			// A reference outside the analyzed files only counts as an
+			// export.
+			if !hasMemberName(groups, node.Text()) || !isMemberReferenceName(node) || !analyzed && !isExportedName(node) {
+				return
+			}
+			symbol := ch.GetSymbolAtLocation(node)
+			if symbol == nil {
+				return
+			}
+			related.forEach(node, symbol, func(relative *ast.Symbol) {
+				for _, declaration := range relative.Declarations {
+					for _, key := range search.byDeclaration[keyOfDeclaration(declaration)] {
+						if used.has(key) {
+							continue
+						}
+						if scope := scopes[key]; scope != nil && (source.Path() != key.path || node.Pos() < scope.Pos() || node.End() > scope.End()) {
+							continue
+						}
+						if analyzed && !isInsideMember(node, key) {
+							used.add(key)
+						} else if isExportedName(node) {
+							mu.Lock()
+							exported[key] = true
+							mu.Unlock()
+						}
+					}
+				}
+			})
+		})
+	})
+
+	var result []*memberCandidate
+	for _, c := range candidates {
+		if exported[c.key] && !used.has(c.key) {
+			result = append(result, c)
 		}
 	}
-	return files
+	return result
+}
+
+// memberSearch is what collectRelatedReferences looks for in a program.
+type memberSearch struct {
+	keys   map[memberKey]bool   // the candidates in the program's files
+	paths  map[tspath.Path]bool // their files
+	groups []*memberSearchGroup // the groups they are in
+
+	// byDeclaration has, for the declarations of the symbols that
+	// find-all-references searches for a candidate (its search set), the
+	// candidate. Declarations stand for their symbols, which differ per
+	// program and, for members that aren't declared as they are used, per
+	// checker.
+	mu            sync.Mutex
+	byDeclaration map[declKey][]memberKey
+}
+
+// groupsFor returns the groups of candidates that the file at path is
+// searched for in the program of p.
+func (s *memberSearch) groupsFor(p *lint.Project, path tspath.Path, owners map[tspath.Path]*lint.Project) []*memberSearchGroup {
+	var groups []*memberSearchGroup
+	for _, group := range s.groups {
+		if group.searchedIn(path, owners[path]) == p {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+// memberSearchGroup is the candidates whose files are in the same programs.
+// Each of those programs resolves a file that they share in the same way,
+// unless they resolve its imports differently. So a file is searched for the
+// group's names in one of them: the program of the project that analyzes the
+// file, whose checkers have resolved the file's types in the passes before,
+// else the first that has the file.
+type memberSearchGroup struct {
+	names    map[string]bool
+	projects []*lint.Project
+	first    map[tspath.Path]*lint.Project // by file, the first of projects with it
+}
+
+func newMemberSearchGroup(projects []*lint.Project) *memberSearchGroup {
+	group := &memberSearchGroup{names: map[string]bool{}, projects: projects, first: map[tspath.Path]*lint.Project{}}
+	for _, p := range projects {
+		for _, source := range p.Program.GetSourceFiles() {
+			if group.first[source.Path()] == nil {
+				group.first[source.Path()] = p
+			}
+		}
+	}
+	return group
+}
+
+// searchedIn returns the project in whose program the file at path, which
+// owner analyzes (nil for a file that isn't analyzed), is searched for the
+// group's names, or nil.
+func (g *memberSearchGroup) searchedIn(path tspath.Path, owner *lint.Project) *lint.Project {
+	if owner != nil && slices.Contains(g.projects, owner) {
+		return owner
+	}
+	return g.first[path]
+}
+
+func hasMemberName(groups []*memberSearchGroup, name string) bool {
+	for _, group := range groups {
+		if group.names[name] {
+			return true
+		}
+	}
+	return false
 }
 
 // hasReferencesOutsideDeclaration reports, per candidate, whether
 // find-all-references in any project containing its file finds a reference
-// in an analyzed file that is not a class member's own name.
+// in an analyzed file that is not a class member's own name. That takes a
+// look at every occurrence of the candidate's name in every file of the
+// program: see collectRelatedReferences.
 func hasReferencesOutsideDeclaration(ctx *lint.Context, candidates []*memberCandidate) []bool {
 	var queries []lint.ReferenceQuery
 	var owners []int
@@ -683,6 +944,234 @@ func hasReferencesOutsideDeclaration(ctx *lint.Context, candidates []*memberCand
 		result[owners[qi]] = result[owners[qi]] || ok
 	}
 	return result
+}
+
+// isExportedName reports whether find-all-references may go on to the
+// imports of name, a reference to a class member (getImportOrExportSymbol in
+// typescript-go's internal/ls/importTracker.go): it's the variable of
+// export const { name } = instance, which the member is the property of, or
+// it's exported itself, as in export default instance.name. It can report
+// more names than that, never fewer.
+func isExportedName(name *ast.Node) bool {
+	// A JavaScript file exports with assignments and JSDoc tags too.
+	if ast.IsInJSFile(name) {
+		return true
+	}
+	parent := name.Parent
+	switch parent.Kind {
+	case ast.KindBindingElement:
+		statement := ast.WalkUpBindingElementsAndPatterns(parent).Parent.Parent
+		return parent.Name() == name && statement != nil && statement.Kind == ast.KindVariableStatement && ast.HasSyntacticModifier(statement, ast.ModifierFlagsExport)
+	case ast.KindExportAssignment:
+		return true
+	}
+	return parent.Parent != nil && parent.Parent.Kind == ast.KindExportAssignment
+}
+
+// isMemberReferenceName reports whether node is where find-all-references
+// looks for a reference to a member (isValidReferencePosition in
+// typescript-go's internal/ls/findallreferences.go): an identifier, or a
+// string that names a property, as in x["name"], { "name": 1 }, T["name"]
+// and Object.defineProperty(x, "name", {}). The names of class members,
+// imports and exports aren't references to members, and the name of a type
+// isn't a reference to a value.
+func isMemberReferenceName(node *ast.Node) bool {
+	parent := node.Parent
+	switch node.Kind {
+	case ast.KindIdentifier:
+		if parent.Kind == ast.KindTypeReference {
+			return false
+		}
+	case ast.KindStringLiteral, ast.KindNoSubstitutionTemplateLiteral:
+		switch parent.Kind {
+		case ast.KindPropertyDeclaration, ast.KindPropertySignature, ast.KindPropertyAssignment, ast.KindEnumMember,
+			ast.KindMethodDeclaration, ast.KindMethodSignature, ast.KindGetAccessor, ast.KindSetAccessor:
+			if parent.Name() != node {
+				return false
+			}
+		case ast.KindElementAccessExpression:
+			if parent.AsElementAccessExpression().ArgumentExpression != node {
+				return false
+			}
+		case ast.KindComputedPropertyName:
+		case ast.KindLiteralType:
+			if parent.Parent.Kind != ast.KindIndexedAccessType {
+				return false
+			}
+		case ast.KindCallExpression:
+			if !ast.IsBindableObjectDefinePropertyCall(parent) || parent.Arguments()[1] != node {
+				return false
+			}
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+	return parent.Kind != ast.KindImportSpecifier && parent.Kind != ast.KindExportSpecifier && !isClassMemberDeclarationName(node)
+}
+
+// memberRelations finds the symbols that a name refers to the way
+// find-all-references does (getRelatedSymbol in typescript-go's
+// internal/ls/findallreferences.go), with one checker. It lives as long as
+// the visit of one file: its symbols would keep a released checker's memory
+// from being freed.
+type memberRelations struct {
+	ch         *checker.Checker
+	bases      map[basePropertyKey][]*ast.Symbol
+	contextual map[*ast.Node]*checker.Type // by object literal or JSX attributes
+}
+
+type basePropertyKey struct {
+	class *ast.Symbol
+	name  string
+}
+
+func newMemberRelations(ch *checker.Checker) *memberRelations {
+	return &memberRelations{ch: ch, bases: map[basePropertyKey][]*ast.Symbol{}, contextual: map[*ast.Node]*checker.Type{}}
+}
+
+// contextualType returns the type that literal, an object literal or the
+// attributes of a JSX element, has to fit: every name in the literal asks
+// for it, and the checker works it out again each time.
+func (r *memberRelations) contextualType(literal *ast.Node) *checker.Type {
+	contextual, ok := r.contextual[literal]
+	if !ok {
+		contextual = r.ch.GetContextualType(literal, checker.ContextFlagsNone)
+		r.contextual[literal] = contextual
+	}
+	return contextual
+}
+
+// forEach calls fn for the symbols that name, which resolves to symbol,
+// refers to:
+//   - symbol, or the ones that it is made from: the
+//     property of every member of a union, the declared property of an
+//     instantiated or mapped type,
+//   - for a member of a class or an interface, the members of that name it
+//     overrides or implements (see baseProperties),
+//   - for a property of an object literal or a JSX attribute, the property
+//     of the type that the literal has to fit,
+//   - for the variable of const { name } = x, the property of x,
+//   - for a constructor parameter that declares a property, the property.
+func (r *memberRelations) forEach(name *ast.Node, symbol *ast.Symbol, fn func(symbol *ast.Symbol)) {
+	ch := r.ch
+	static := isStaticSymbol(symbol)
+	fromRoots := func(symbol *ast.Symbol) {
+		for _, root := range ch.GetRootSymbols(symbol) {
+			fn(root)
+			if root.Parent == nil || root.Parent.Flags&(ast.SymbolFlagsClass|ast.SymbolFlagsInterface) == 0 {
+				continue
+			}
+			for _, base := range r.baseProperties(root.Parent, root.Name) {
+				// A static member and an instance member can have the
+				// same name.
+				if isStaticSymbol(base) == static {
+					fn(base)
+				}
+			}
+		}
+	}
+	parent := name.Parent
+	if element := objectLiteralElementOfName(name); element != nil {
+		if contextual := r.contextualType(element.Parent); contextual != nil {
+			for _, property := range ch.GetPropertySymbolsFromContextualType(element, contextual, true /*unionSymbolOk*/) {
+				fromRoots(property)
+			}
+		}
+		// The property of ({ name: y } = x).
+		if property := ch.GetPropertySymbolOfDestructuringAssignment(name); property != nil {
+			fn(property)
+		}
+	}
+	fromRoots(symbol)
+	if declaration := symbol.ValueDeclaration; declaration != nil && ast.IsParameterPropertyDeclaration(declaration, declaration.Parent) {
+		parameter, property := ch.GetSymbolsOfParameterPropertyDeclaration(declaration, symbol.Name)
+		if symbol == parameter {
+			fromRoots(property)
+		}
+		return
+	}
+	if parent.Kind == ast.KindBindingElement && parent.Parent.Kind == ast.KindObjectBindingPattern && parent.Name().Kind == ast.KindIdentifier && parent.PropertyName() == nil {
+		if t := ch.GetTypeAtLocation(parent.Parent); t != nil {
+			if property := ch.GetPropertyOfType(t, parent.Name().Text()); property != nil {
+				fromRoots(property)
+			}
+		}
+	}
+}
+
+// objectLiteralElementOfName returns the property of an object literal or
+// the JSX attribute that name names, as in { name: 1 }, { ["name"]: 1 } and
+// <a name="" />, or nil.
+func objectLiteralElementOfName(name *ast.Node) *ast.Node {
+	element := name.Parent
+	if name.Kind != ast.KindIdentifier && element.Kind == ast.KindComputedPropertyName {
+		element = element.Parent
+	} else if element.Name() != name {
+		return nil
+	}
+	if !ast.IsObjectLiteralElement(element) && !ast.IsJsxAttribute(element) && !ast.IsJsxSpreadAttribute(element) {
+		return nil
+	}
+	if element.Parent.Kind != ast.KindObjectLiteralExpression && element.Parent.Kind != ast.KindJsxAttributes {
+		return nil
+	}
+	return element
+}
+
+// baseProperties returns the properties called name of the types that class
+// (the symbol of a class or an interface) extends and implements, and of the
+// types that those do.
+func (r *memberRelations) baseProperties(class *ast.Symbol, name string) []*ast.Symbol {
+	key := basePropertyKey{class, name}
+	if properties, ok := r.bases[key]; ok {
+		return properties
+	}
+	var properties []*ast.Symbol
+	visited := map[*ast.Symbol]bool{}
+	var visit func(symbol *ast.Symbol)
+	visit = func(symbol *ast.Symbol) {
+		if symbol.Flags&(ast.SymbolFlagsClass|ast.SymbolFlagsInterface) == 0 || visited[symbol] {
+			return
+		}
+		visited[symbol] = true
+		for _, declaration := range symbol.Declarations {
+			for _, typeNode := range superTypeNodes(declaration) {
+				t := r.ch.GetTypeAtLocation(typeNode)
+				if t == nil || t.Symbol() == nil {
+					continue
+				}
+				if property := r.ch.GetPropertyOfType(t, name); property != nil {
+					properties = append(properties, r.ch.GetRootSymbols(property)...)
+				}
+				visit(t.Symbol())
+			}
+		}
+	}
+	visit(class)
+	r.bases[key] = properties
+	return properties
+}
+
+// superTypeNodes returns the types in the extends and implements clauses of
+// a class, and in the extends clause of an interface.
+func superTypeNodes(declaration *ast.Node) []*ast.Node {
+	switch {
+	case declaration.Kind == ast.KindInterfaceDeclaration:
+		return ast.GetHeritageElements(declaration, ast.KindExtendsKeyword)
+	case isClassLike(declaration):
+		var types []*ast.Node
+		if extended := ast.GetClassExtendsHeritageElement(declaration); extended != nil {
+			types = append(types, extended)
+		}
+		return append(types, ast.GetImplementsTypeNodes(declaration)...)
+	}
+	return nil
+}
+
+func isStaticSymbol(symbol *ast.Symbol) bool {
+	return symbol.ValueDeclaration != nil && ast.HasStaticModifier(symbol.ValueDeclaration)
 }
 
 // isInsideMember reports whether node, in any parse of its file, is inside
