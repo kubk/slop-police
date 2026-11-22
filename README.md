@@ -369,20 +369,25 @@ slop-police links every usage across all your projects first, then reports. See 
 
 ## Comparison with other tools
 
-|                                            | slop-police | ESLint | Sonar | knip | jscpd |
-| ------------------------------------------ | :---------: | :----: | :---: | :--: | :---: |
-| Unused exports and files                   |      ✓      |   ¹    |       |  ✓   |       |
-| Unused enum members                        |      ✓      |        |       |  ✓   |       |
-| Unused class methods                       |      ✓      |   ²    |   ²   |      |       |
-| Unused object keys                         |      ✓      |        |       |      |       |
-| Copy-pasted code                           |      ✓      |        |   ✓   |      |   ✓   |
-| Helpers rewritten instead of reused        |      ✓      |        |   ³   |      |       |
-| Pass-through wrappers, getters and aliases |      ✓      |        |   ⁴   |      |       |
+|                                            | slop-police | ESLint | Sonar | knip | jscpd | fallow |
+| ------------------------------------------ | :---------: | :----: | :---: | :--: | :---: | :----: |
+| Unused exports and files                   |     ✅      |   ¹    |       |  ✅  |       |   ✅   |
+| Unused enum members                        |     ✅      |        |       |  ✅  |       |   ⁵    |
+| Unused class methods                       |     ✅      |   ²    |   ²   |      |       |   ⁵    |
+| Unused object keys                         |     ✅      |        |       |      |       |        |
+| Copy-pasted code                           |     ✅      |        |  ✅   |      |  ✅   |   ✅   |
+| Helpers rewritten instead of reused        |     ✅      |        |   ³   |      |       |   ⁶    |
+| Pass-through wrappers, getters and aliases |     ✅      |        |   ⁴   |      |       |   ⁷    |
+| Custom rules                               |     ✅      |   ✅   |       |  ⁸   |       |   ⁸    |
 
 1. Partial: `import/no-unused-modules` finds exports nothing imports, but not exports used only in their own file or files unreachable from entry points.
 2. Partial: only `#private` members.
 3. Partial: `no-identical-functions` compares functions within one file and needs identical variable names.
 4. Partial: `redundant-type-aliases` catches aliases of primitives and of type aliases in the same file.
+5. Partial: only in exported enums and classes.
+6. Partial: `dupes --mode semantic` also reports functions that call different functions, and `similar-code` uses a local model whose results need review.
+7. Partial: `thin-wrapper` catches only React components that pass all their props to one child.
+8. No: plugins only declare the entry points and exports a framework uses, and fallow's rule packs only ban imports, calls and exports. Neither runs rules you write.
 
 ## Requirements
 
