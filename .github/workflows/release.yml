@@ -54,7 +54,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Building the main package compiles TypeScript's JS API with go tool tsgo.
+      # Building the main package compiles TypeScript's JS API from the typescript-go module, which go mod download fetches.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

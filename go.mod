@@ -17,8 +17,5 @@ require (
 	github.com/mackerelio/go-osstat v0.2.7 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )
-
-tool github.com/microsoft/typescript-go/cmd/tsgo

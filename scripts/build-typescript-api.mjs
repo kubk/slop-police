@@ -1,8 +1,9 @@
 // Builds TypeScript 7's JS API (the sync client, the AST and the enums) into
 // npm/slop-police/lib/typescript. Plugins use it to read ASTs and query
 // checkers in the slop-police binary, so it must speak the binary's protocol:
-// it is compiled from the typescript-go module go.mod pins, with that
-// module's tsgo (a tool in go.mod).
+// it is compiled from the sources of the typescript-go module go.mod pins.
+// The compiler only transpiles them (--noCheck), so a prebuilt TypeScript 7
+// from npm does, instead of building tsgo from those sources.
 //
 //   node scripts/build-typescript-api.mjs
 import { execFileSync } from 'node:child_process'
@@ -25,24 +26,31 @@ export function buildTypeScriptApi(dest = path.join(root, 'npm/slop-police/lib/t
   const { lib } = JSON.parse(
     fs.readFileSync(path.join(pkg, 'tsconfig.base.json'), 'utf8'),
   ).compilerOptions
-  go(
-    'tool',
-    'tsgo',
-    '-p',
-    path.join(pkg, 'tsconfig.json'),
-    '--outDir',
-    path.join(dest, 'dist'),
-    '--noCheck',
-    '--types',
-    '',
-    '--lib',
-    [...lib, 'esnext.disposable'].join(','),
-    '--composite',
-    'false',
-    '--sourceMap',
-    'false',
-    '--declarationMap',
-    'false',
+  execFileSync(
+    'npm',
+    [
+      'exec',
+      '--yes',
+      '--package=typescript@7.0.2',
+      '--',
+      'tsc',
+      '-p',
+      path.join(pkg, 'tsconfig.json'),
+      '--outDir',
+      path.join(dest, 'dist'),
+      '--noCheck',
+      '--types',
+      '',
+      '--lib',
+      [...lib, 'esnext.disposable'].join(','),
+      '--composite',
+      'false',
+      '--sourceMap',
+      'false',
+      '--declarationMap',
+      'false',
+    ],
+    { cwd: root, stdio: 'inherit' },
   )
   // The async client (and the JSON-RPC library it needs) isn't used.
   fs.rmSync(path.join(dest, 'dist/api/async'), { recursive: true })
