@@ -18,8 +18,8 @@ step() {
 }
 
 step "Go toolchain"
-# The orb image ships Go in /usr/local/go. Without it, install the version
-# go.mod names; GOTOOLCHAIN=auto fetches a newer one later if go.mod moves on.
+# The orb image has no Go: install the version go.mod names into
+# /usr/local/go; GOTOOLCHAIN=auto fetches a newer one later if go.mod moves on.
 if [ ! -x /usr/local/go/bin/go ]; then
 	version="$(sed -n 's/^go \([0-9][0-9.]*\).*/\1/p' go.mod)"
 	case "$version" in *.*.*) ;; *) version="$version.0" ;; esac
