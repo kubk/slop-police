@@ -25,49 +25,64 @@ func (c *Context) markPublicDeclarations() {
 			entries = append(entries, file)
 		}
 	}
+	c.markDeclarations(entries, func(file *File) *map[int]bool { return &file.public }, func(file *File, _ *checker.Checker) []*ast.Symbol {
+		return []*ast.Symbol{file.Source.Symbol}
+	})
+}
+
+// markDeclarations marks the declarations that the symbols of each file
+// stand for (see forEachDeclaration) in the marks of their files, which
+// field returns.
+func (c *Context) markDeclarations(files []*File, field func(file *File) *map[int]bool, symbols func(file *File, ch *checker.Checker) []*ast.Symbol) {
 	var mu sync.Mutex
-	c.ForEachFile(entries, func(file *File, ch *checker.Checker) {
+	c.ForEachFile(files, func(file *File, ch *checker.Checker) {
 		visited := map[*ast.Symbol]bool{}
-		var visitModule func(module *ast.Symbol)
-		var visit func(symbol *ast.Symbol)
-		visit = func(symbol *ast.Symbol) {
-			if symbol == nil || visited[symbol] {
-				return
-			}
-			visited[symbol] = true
-			if symbol.Flags&ast.SymbolFlagsAlias != 0 && len(symbol.Declarations) > 0 {
-				visit(ch.GetAliasedSymbol(symbol))
-				return
-			}
-			for _, declaration := range symbol.Declarations {
-				if declaration.Kind == ast.KindSourceFile {
-					visitModule(symbol)
-					continue
-				}
+		for _, symbol := range symbols(file, ch) {
+			forEachDeclaration(ch, symbol, visited, func(declaration *ast.Node) {
 				target := c.filesByPath[ast.GetSourceFileOfNode(declaration).Path()]
 				if target == nil {
-					continue
+					return
 				}
 				mu.Lock()
-				if target.public == nil {
-					target.public = map[int]bool{}
+				marks := field(target)
+				if *marks == nil {
+					*marks = map[int]bool{}
 				}
-				target.public[declaration.Pos()] = true
+				(*marks)[declaration.Pos()] = true
 				mu.Unlock()
-			}
-			if symbol.Flags&ast.SymbolFlagsClass != 0 {
-				for _, base := range ch.GetBaseTypes(ch.GetDeclaredTypeOfSymbol(symbol)) {
-					visit(base.Symbol())
-				}
-			}
-		}
-		visitModule = func(module *ast.Symbol) {
-			for _, export := range ch.GetExportsOfModule(module) {
-				visit(export)
-			}
-		}
-		if module := file.Source.Symbol; module != nil {
-			visitModule(module)
+			})
 		}
 	})
+}
+
+// forEachDeclaration calls fn with the declarations of symbol and of what it
+// stands for: the symbols it aliases, in turn, the exports of a module, and
+// the classes that a class extends.
+func forEachDeclaration(ch *checker.Checker, symbol *ast.Symbol, visited map[*ast.Symbol]bool, fn func(declaration *ast.Node)) {
+	if symbol == nil || visited[symbol] {
+		return
+	}
+	visited[symbol] = true
+	for _, declaration := range symbol.Declarations {
+		if declaration.Kind != ast.KindSourceFile {
+			fn(declaration)
+			continue
+		}
+		for _, export := range ch.GetExportsOfModule(symbol) {
+			forEachDeclaration(ch, export, visited, fn)
+		}
+	}
+	if symbol.Flags&ast.SymbolFlagsAlias != 0 {
+		// The default of a module imported with esModuleInterop is an alias
+		// the checker makes up, without declarations or a target to resolve.
+		if len(symbol.Declarations) > 0 {
+			forEachDeclaration(ch, ch.GetImmediateAliasedSymbol(symbol), visited, fn)
+		}
+		return
+	}
+	if symbol.Flags&ast.SymbolFlagsClass != 0 {
+		for _, base := range ch.GetBaseTypes(ch.GetDeclaredTypeOfSymbol(symbol)) {
+			forEachDeclaration(ch, base.Symbol(), visited, fn)
+		}
+	}
 }

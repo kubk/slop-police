@@ -569,3 +569,125 @@ export class Helper {
 		t.Errorf("got %v\nwant %v", got, want)
 	}
 }
+
+// Imports in the .astro, .vue, .svelte and .mdx files that the tsconfig
+// includes are uses, and what they import may have its members read there.
+func TestComponentImports(t *testing.T) {
+	t.Parallel()
+	results := lintFindings(t, map[string]string{
+		"tsconfig.json": `{
+  "compilerOptions": {
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "target": "ES2020",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src/**/*.ts", "src/**/*.astro", "src/**/*.vue", "src/**/*.svelte", "src/content/**/*.mdx"]
+}`,
+		"src/main.ts": `import Card from "./components/Card.vue";
+import Gone from "./components/Gone.vue";
+import { links, Mode, Counter } from "./lib/a.ts";
+export const app = [Card, Gone, links.docs, Mode.A, new Counter().increment()];
+`,
+		"src/pages/index.astro": `---
+import Card from "../components/Card.vue";
+import { a, Mode, wrap, Counter } from "../lib/a";
+import { links } from "../lib/card";
+const href = links.help;
+new Counter().reset();
+---
+<Card href={href} mode={Mode.B} value={wrap(a)} />
+<script>
+  import { onClient } from "../lib/client";
+  onClient();
+</script>
+<script src="../client/main.ts"></script>
+<script is:inline>
+  import { inline } from "../lib/a";
+</script>
+`,
+		"src/components/Card.vue": `<script setup lang="ts">
+import { useCard, starred } from "@/lib/card";
+const card = useCard(starred);
+</script>
+
+<template><div>{{ card }}</div></template>
+`,
+		"src/components/Toggle.svelte": `<script lang="ts">
+  import * as all from "../lib/all";
+  const values = Object.values(all);
+</script>
+`,
+		"src/content/post.mdx": `---
+title: Post
+---
+
+import { region } from "../lib/snippets";
+
+Some text that mentions
+import { notAnImport } from "../lib/snippets";
+
+~~~ts
+// An example
+
+import { fenced } from "../lib/snippets";
+~~~
+
+<p>{region("x")}</p>
+`,
+		"src/drafts/old.mdx": `import { notIncluded } from "../lib/snippets";
+`,
+		"src/lib/a.ts": `function base(value: number) { return value; }
+export function wrap(value: number) { return base(value); }
+export const a = 1;
+export const inline = 2;
+export const links = { docs: "/docs", help: "/help" };
+export enum Mode { A, B }
+export class Counter {
+  increment() {}
+  reset() {}
+  private hidden() {}
+}
+`,
+		"src/lib/client.ts":   "export function onClient() {}\n",
+		"src/client/main.ts":  "import { boot } from \"../lib/boot\";\nboot();\n",
+		"src/lib/boot.ts":     "export function boot() {}\n",
+		"src/lib/card.ts":     "export { useCard } from \"./use-card\";\nexport { links } from \"./a\";\nexport * from \"./star\";\n",
+		"src/lib/use-card.ts": "export function useCard(value: number) { return value; }\n",
+		"src/lib/star.ts":     "export const starred = 1;\nexport const unstarred = 2;\n",
+		"src/lib/all.ts":      "export const first = 1;\nexport const second = 2;\n",
+		"src/lib/snippets.ts": `export function region(name: string) { return name; }
+export const fenced = 1;
+export const notAnImport = 2;
+export const notIncluded = 3;
+`,
+		"src/lib/dead.ts": "export const dead = 1;\n",
+	}, obj{
+		"entry": []string{"src/main.ts"},
+		"rules": obj{
+			"unused-exports":          "error",
+			"no-unresolved-import":    "error",
+			"unused-object-keys":      "error",
+			"unused-enum-members":     "error",
+			"unused-class-members":    []any{"error", obj{"includePrivate": true}},
+			"no-pass-through-wrapper": "error",
+		},
+	})
+	want := []lint.Result{
+		{Rule: "no-pass-through-wrapper", Severity: "error", File: "src/lib/a.ts", Line: 2, Column: 17, Message: "Function wrap only forwards to base"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/a.ts", Line: 4, Column: 14, Message: "Export inline is never used"},
+		{Rule: "unused-class-members", Severity: "error", File: "src/lib/a.ts", Line: 10, Column: 11, Message: "Method Counter.hidden is never used"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/dead.ts", Line: 1, Column: 1, Message: "File is never imported from an entry point"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/snippets.ts", Line: 2, Column: 14, Message: "Export fenced is never used"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/snippets.ts", Line: 3, Column: 14, Message: "Export notAnImport is never used"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/snippets.ts", Line: 4, Column: 14, Message: "Export notIncluded is never used"},
+		{Rule: "unused-exports", Severity: "error", File: "src/lib/star.ts", Line: 2, Column: 14, Message: "Export unstarred is never used"},
+		{Rule: "no-unresolved-import", Severity: "error", File: "src/main.ts", Line: 2, Column: 18, Message: "Cannot find module ./components/Gone.vue"},
+	}
+	if !slices.Equal(results, want) {
+		t.Errorf("got %v\nwant %v", results, want)
+	}
+}

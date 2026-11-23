@@ -31,7 +31,8 @@ func init() {
 // to a file or matches a `declare module`, like it does for tsc. Side-effect
 // imports (import "./styles.css") bring in no types, so they're skipped, and
 // so are imports under a @ts-expect-error or @ts-ignore, whose author knows
-// they don't resolve (virtual modules, runtime-provided ones).
+// they don't resolve (virtual modules, runtime-provided ones), and imports
+// of .astro, .vue, .svelte and .mdx files, which declare no types.
 //
 // A relative import of a path where no file exists, under any extension,
 // hides no usages: there's nothing it could link to. It's a bug in the
@@ -75,6 +76,9 @@ func checkImports(ctx *Context) error {
 			}
 			if tspath.IsExternalModuleNameRelative(name) && !anyFileAt(tspath.ResolvePath(tspath.GetDirectoryPath(file.Source.FileName()), name)) {
 				ctx.missingImports = append(ctx.missingImports, Finding{File: file, Node: module, Message: "Cannot find module " + name})
+				continue
+			}
+			if isComponentFile(name) {
 				continue
 			}
 			// A package missing in one project is likely missing in the

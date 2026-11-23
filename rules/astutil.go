@@ -171,7 +171,13 @@ func isClassLike(node *ast.Node) bool {
 // isPublicMember reports whether member is a public member of a class that
 // an entry point exports: code outside the analyzed files may use it.
 func isPublicMember(file *lint.File, member *ast.Node) bool {
-	return isClassLike(member.Parent) && file.IsPublic(member.Parent) && member.Name() != nil && member.Name().Kind != ast.KindPrivateIdentifier &&
+	return isClassLike(member.Parent) && file.IsPublic(member.Parent) && isVisibleMember(member)
+}
+
+// isVisibleMember reports whether code outside the class can use member:
+// it isn't #private, private or protected.
+func isVisibleMember(member *ast.Node) bool {
+	return member.Name() != nil && member.Name().Kind != ast.KindPrivateIdentifier &&
 		!hasModifier(member, ast.KindPrivateKeyword) && !hasModifier(member, ast.KindProtectedKeyword)
 }
 

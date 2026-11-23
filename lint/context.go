@@ -65,11 +65,15 @@ type File struct {
 	IsTest  bool
 	IsEntry bool // matches the entry option
 	RelPath string
+	// ImportedByComponent is set when a .astro, .vue, .svelte or .mdx file
+	// imports the file (see findComponentImports).
+	ImportedByComponent bool
 
-	projectIndex int // position among the project's analyzed files
-	lineOnce     sync.Once
-	lineStarts   []core.TextPos
-	public       map[int]bool // positions of public declarations (see IsPublic)
+	projectIndex  int // position among the project's analyzed files
+	lineOnce      sync.Once
+	lineStarts    []core.TextPos
+	public        map[int]bool // positions of public declarations (see IsPublic)
+	componentUses map[int]bool // positions of declarations that component files import (see UsedByComponent)
 }
 
 type Context struct {
@@ -193,6 +197,8 @@ func newContext(requests context.Context, session *project.Session, config *Conf
 	if err := checkImports(ctx); err != nil {
 		return nil, err
 	}
+	ctx.findComponentImports(gitignored)
+	timing.Mark("component imports")
 	if ctx.HasEntries {
 		ctx.markPublicDeclarations()
 		timing.Mark("public declarations")

@@ -46,7 +46,7 @@ func checkUnusedEnumMembers(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			continue
 		}
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
-			if node.Kind != ast.KindEnumDeclaration || file.IsPublic(node) {
+			if node.Kind != ast.KindEnumDeclaration || file.IsPublic(node) || file.UsedByComponent(node) {
 				return
 			}
 			members := node.AsEnumDeclaration().Members.Nodes

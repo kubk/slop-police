@@ -21,7 +21,9 @@ import (
 // checked. Without the entry option, a file that no other analyzed file
 // imports is an entry point. With it, only the listed files and tests are,
 // and files they don't reach through imports are reported as never imported.
-// Uses in those files don't count.
+// Uses in those files don't count. Component files (.astro, .vue, .svelte,
+// .mdx) are entry points too, but the files they import are checked, and
+// what they import is used.
 func init() {
 	lint.Register(&lint.Rule{
 		Name:  "unused-exports",
@@ -71,6 +73,15 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 				queue = append(queue, file)
 			}
 		}
+		// Component files are loaded from outside the analyzed code too, but
+		// what they import is checked.
+		for _, file := range files {
+			if file.ImportedByComponent && !live[file.Index] {
+				live[file.Index] = true
+				checked[file.Index] = file.Index < analyzed && !file.IsTest
+				queue = append(queue, file)
+			}
+		}
 		for len(queue) > 0 {
 			file := queue[0]
 			queue = queue[1:]
@@ -88,8 +99,9 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			}
 		}
 	} else {
-		for i := range files {
+		for i, file := range files {
 			live[i] = true
+			checked[i] = checked[i] || file.ImportedByComponent && i < analyzed && !file.IsTest
 			for _, path := range edges[i].imports {
 				if target := byPath[path]; target.Index < analyzed && !target.IsTest {
 					checked[target.Index] = true
@@ -169,7 +181,7 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 	phase("uses")
 
 	for _, c := range candidates {
-		if c.usedOutside.Load() || wholeModule[c.file.Source.Path()].Load() {
+		if c.usedOutside.Load() || wholeModule[c.file.Source.Path()].Load() || slices.ContainsFunc(c.declarations, c.file.UsedByComponent) {
 			continue
 		}
 		message := "Export " + c.name + " is never used"

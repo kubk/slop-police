@@ -175,7 +175,8 @@ func collectMemberCandidates(ctx *lint.Context, options lint.Options) []*memberC
 			continue
 		}
 		forEachNode(file.Source.AsNode(), func(node *ast.Node) {
-			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) && !isPublicMember(file, node) {
+			usedByComponent := isClassLike(node.Parent) && file.UsedByComponent(node.Parent) && isVisibleMember(node)
+			if isCheckedClassMember(node) && shouldCheckVisibility(node, options) && node.Name().Kind == ast.KindIdentifier && !isProtocolMember(node) && !isPublicMember(file, node) && !usedByComponent {
 				key := classMemberKey(node.Parent, node.Name().Text())
 				key.static = hasModifier(node, ast.KindStaticKeyword)
 				candidates = append(candidates, &memberCandidate{file, node, key})
