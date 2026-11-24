@@ -329,9 +329,76 @@ new Store();
 	if err := os.Remove(filepath.Join(root, "slop-police.json")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Remove(filepath.Join(root, "tsconfig.json")); err != nil {
+		t.Fatal(err)
+	}
 	var stdout, stderr bytes.Buffer
-	if code := lint.Run(root, &stdout, &stderr, nil); code != 2 || !strings.Contains(stderr.String(), "/INSTALL.md") {
-		t.Errorf("missing config: exit %d, stderr %q", code, stderr.String())
+	if code := lint.Run(root, &stdout, &stderr, nil); code != 2 || !strings.Contains(stderr.String(), "no tsconfig.json") {
+		t.Errorf("missing config and tsconfig: exit %d, stderr %q", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "slop-police.json")); err == nil {
+		t.Error("saved a config without projects")
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
+	base := strings.Replace(tsconfig, `"include": ["**/*.ts", "**/*.tsx"]`, `"exclude": []`, 1)
+	alias := "type User = { id: string };\nexport type Member = User;\n"
+	root := writeFixture(t, map[string]string{
+		".gitignore": "dist/\n",
+		// A shared base without files of its own, which the others extend.
+		// As a project, it would take in stray.ts.
+		"tsconfig.base.json": base,
+		"tsconfig.json":      `{"extends": "./tsconfig.base.json", "include": ["scripts"]}`,
+		"stray.ts":           alias,
+		// A build variant with no files of its own, and a solution-style tsconfig.
+		"packages/a/tsconfig.json":               `{"extends": "../../tsconfig.base.json", "include": ["src"]}`,
+		"packages/a/tsconfig.build.json":         `{"extends": "./tsconfig.json", "exclude": ["src/**/*.test.ts"]}`,
+		"packages/a/src/a.ts":                    alias,
+		"packages/a/src/a.test.ts":               alias,
+		"packages/b/tsconfig.json":               `{"files": [], "references": [{"path": "./tsconfig.app.json"}]}`,
+		"packages/b/tsconfig.app.json":           `{"extends": "../../tsconfig.base.json", "include": ["src"]}`,
+		"packages/b/components.json":             `{"aliases": {"components": "@/components"}}`,
+		"packages/b/src/b.ts":                    alias,
+		"packages/b/src/routeTree.gen.ts":        alias,
+		"packages/b/src/components/ui/button.ts": alias,
+		"scripts/seed.ts":                        alias,
+		"dist/tsconfig.json":                     tsconfig,
+		"dist/out.ts":                            alias,
+		"node_modules/pkg/tsconfig.json":         tsconfig,
+	})
+	var stdout, stderr bytes.Buffer
+	code := lint.Run(root, &stdout, &stderr, nil)
+	want := `packages/a/src/a.ts:2:13  error  no-identity-type-alias  Type alias Member only renames User
+packages/b/src/b.ts:2:13  error  no-identity-type-alias  Type alias Member only renames User
+scripts/seed.ts:2:13      error  no-identity-type-alias  Type alias Member only renames User
+`
+	projects := `"projects": [
+    "packages/a/tsconfig.json",
+    "packages/b/tsconfig.app.json",
+    "tsconfig.json"
+  ],
+  "ignore": [
+    "**/*.gen.ts",
+    "**/*.generated.{ts,tsx}",
+    "**/__generated__/**",
+    "packages/b/src/components/ui/**"
+  ],`
+	if code != 1 || !strings.Contains(stdout.String(), projects) || !strings.Contains(stdout.String(), "INSTALL.md") || stderr.Len() != 0 {
+		t.Errorf("exit %d, stdout %s, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if got, _, _ := strings.Cut(stdout.String(), "\n\n"); got+"\n" != want {
+		t.Errorf("findings:\n%s\nwant:\n%s", got, want)
+	}
+	// The saved config is used from then on, without the notice.
+	saved, err := os.ReadFile(filepath.Join(root, "slop-police.json"))
+	if err != nil || !strings.Contains(string(saved), projects) {
+		t.Errorf("saved config %q, %v", saved, err)
+	}
+	stdout.Reset()
+	if code := lint.Run(root, &stdout, &stderr, nil); code != 1 || stdout.String() != want+"\n3 errors, 0 warnings\n" {
+		t.Errorf("second run: exit %d, stdout %s", code, stdout.String())
 	}
 }
 

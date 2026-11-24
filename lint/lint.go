@@ -25,9 +25,10 @@ type Result struct {
 	Message  string   `json:"message"`
 }
 
-// Run lints the project in root (reading root/slop-police.json), prints the
-// report to stdout and returns the exit code: 0, 1 when there are errors, 2
-// for config errors and 3 when slop-police crashes (both printed to stderr).
+// Run lints the project in root (reading root/slop-police.json, or saving a
+// default config there that it prints after the report), prints the report to
+// stdout and returns the exit code: 0, 1 when there are errors, 2 for config
+// errors and 3 when slop-police crashes (both printed to stderr).
 func Run(root string, stdout, stderr io.Writer, timing *Timing) int {
 	config, err := LoadConfig(root, nil)
 	var results []Result
@@ -36,11 +37,27 @@ func Run(root string, stdout, stderr io.Writer, timing *Timing) int {
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		// The saved config is used from now on, so this is the only run
+		// that can tell about it.
+		if config != nil && config.Default != "" {
+			fmt.Fprintf(stderr, defaultConfigNotice, config.Default)
+		}
 		return errorExitCode(err)
 	}
 	fmt.Fprintln(stdout, Format(results))
+	if config.Default != "" {
+		fmt.Fprintf(stdout, defaultConfigNotice, config.Default)
+	}
 	return exitCode(results)
 }
+
+const defaultConfigNotice = `
+slop-police saved a default config to slop-police.json:
+
+%s
+
+For better findings, paste this into your AI agent: https://raw.githubusercontent.com/kubk/slop-police/main/INSTALL.md
+`
 
 // exitCode is 1 when there are errors, 0 otherwise.
 func exitCode(results []Result) int {

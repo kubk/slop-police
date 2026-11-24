@@ -36,24 +36,22 @@ type Config struct {
 	TestFiles []string
 	Entry     []string
 	Rules     []EnabledRule
+	// Default is the config as JSON when root had no slop-police.json and
+	// slop-police saved a default one (see defaultConfig).
+	Default string
 
 	knownRules map[string]bool // built-in and plugin rules, enabled or not
 }
 
-// LoadConfig reads and validates slop-police.json in root. pluginRules are
-// the rules the npm launcher loaded from the config's plugins, or nil when
-// slop-police runs without the launcher.
+// LoadConfig reads and validates slop-police.json in root, or saves a
+// default config there when there's none. pluginRules are the rules the npm
+// launcher loaded from the config's plugins, or nil when slop-police runs
+// without the launcher.
 func LoadConfig(root string, pluginRules []*Rule) (*Config, error) {
 	data, err := os.ReadFile(filepath.Join(root, configFileName))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, configErrorf(`%s not found.
-
-Let your coding agent set up slop-police, so it finds every real issue it can:
-  https://github.com/kubk/slop-police/blob/main/INSTALL.md
-
-To set it up by hand, add a %s with your "projects" and "entry" points:
-  https://github.com/kubk/slop-police#configuration`, configFileName, configFileName)
+			return defaultConfig(root, pluginRules)
 		}
 		return nil, configErrorf("Unable to read %s: %v", configFileName, err)
 	}
