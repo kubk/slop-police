@@ -124,11 +124,28 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			names[c.name] = true
 		}
 	}
-	// A dynamic import uses any export of the module. An entry point's
-	// export * exposes everything the module exports, also through the
-	// module's own export *.
-	var exposed []*lint.File
+	// expose marks what the files re-export with export * as used, also
+	// through the targets' own export *.
 	visited := make([]bool, len(files))
+	expose := func(exposed []*lint.File) {
+		for len(exposed) > 0 {
+			file := exposed[0]
+			exposed = exposed[1:]
+			for _, path := range edges[file.Index].star {
+				if target := byPath[path]; !visited[target.Index] {
+					visited[target.Index] = true
+					if used := wholeModule[path]; used != nil {
+						used.Store(true)
+					}
+					exposed = append(exposed, target)
+				}
+			}
+		}
+	}
+	// A dynamic import uses any export of the module, but not what it
+	// re-exports with export *. An entry point's export * exposes everything
+	// the module exports.
+	var exposed []*lint.File
 	for _, file := range files {
 		if !live[file.Index] {
 			continue
@@ -142,19 +159,7 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			exposed = append(exposed, file)
 		}
 	}
-	for len(exposed) > 0 {
-		file := exposed[0]
-		exposed = exposed[1:]
-		for _, path := range edges[file.Index].star {
-			if target := byPath[path]; !visited[target.Index] {
-				visited[target.Index] = true
-				if used := wholeModule[path]; used != nil {
-					used.Store(true)
-				}
-				exposed = append(exposed, target)
-			}
-		}
-	}
+	expose(exposed)
 	phase(fmt.Sprintf("candidates (%d)", len(candidates)))
 	if len(candidates) == 0 {
 		return findings
@@ -174,10 +179,23 @@ func checkUnusedExports(ctx *lint.Context, _ lint.Options) []lint.Finding {
 			objectNames[c.name] = true
 		}
 	}
+	escaped := make([][]tspath.Path, len(files))
 	ctx.ForEachFile(liveFiles, func(file *lint.File, ch *checker.Checker) {
 		u := &exportUses{ch: ch, file: file, byDecl: byDecl, wholeModule: wholeModule, exportsEscape: !checked[file.Index]}
 		u.collect(names, objectNames)
+		escaped[file.Index] = u.escaped
 	})
+	// A namespace used as a value exposes what its module re-exports with
+	// export *, like an entry point.
+	exposed = nil
+	for _, paths := range escaped {
+		for _, path := range paths {
+			if file := byPath[path]; file != nil {
+				exposed = append(exposed, file)
+			}
+		}
+	}
+	expose(exposed)
 	phase("uses")
 
 	for _, c := range candidates {
@@ -312,6 +330,8 @@ type exportUses struct {
 	// exportsEscape is set for entry points, whose exports of a namespace
 	// expose all of its members.
 	exportsEscape bool
+	// escaped has the modules whose namespace the file uses as a value.
+	escaped []tspath.Path
 	// localTargets maps the local declarations that the file's own export
 	// specifiers export to their candidates, so that local uses count as uses
 	// in the file.
@@ -422,9 +442,11 @@ func (u *exportUses) markChain(symbol *ast.Symbol, node *ast.Node, escapes bool)
 				c.usedInFile.Store(true)
 			}
 			if d.Kind == ast.KindSourceFile && escapes {
-				if used := u.wholeModule[d.AsSourceFile().Path()]; used != nil {
+				path := d.AsSourceFile().Path()
+				if used := u.wholeModule[path]; used != nil {
 					used.Store(true)
 				}
+				u.escaped = append(u.escaped, path)
 			}
 		}
 		// The default of a module imported with esModuleInterop is an alias

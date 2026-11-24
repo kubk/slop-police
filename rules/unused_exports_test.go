@@ -209,6 +209,26 @@ export const all = Object.keys(escaped);
 			},
 		},
 		{
+			name: "a namespace of a barrel used as a value uses what the barrel re-exports with export *",
+			files: map[string]string{
+				"main.ts": `
+import * as schema from "./schema/index.ts";
+import * as read from "./read/index.ts";
+declare function drizzle(config: { schema: object }): void;
+drizzle({ schema });
+export const user = read.user;
+`,
+				"schema/index.ts": `export * from "./mid.ts";`,
+				"schema/mid.ts":   `export * from "./auth.ts";`,
+				"schema/auth.ts":  "export const user = 1;\nexport const session = 2;\n",
+				"read/index.ts":   `export * from "./auth.ts";`,
+				"read/auth.ts":    "export const user = 1;\nexport const session = 2;\n",
+			},
+			want: []locatedFinding{
+				{"read/auth.ts", 2, 14, "Export session is never used"},
+			},
+		},
+		{
 			name: "dynamic imports and import types use the whole module",
 			files: map[string]string{
 				"main.ts": `
@@ -228,28 +248,23 @@ export type Member = import("./member.ts").Used;
 			name: "exports read from a module object that is a value",
 			files: map[string]string{
 				"main.ts": `
-import * as stored from "./stored.ts";
 import { KEY } from "./keys.ts";
 export async function load(user: { fromValue: number; unused: number }, table: Record<string, number>) {
   const barrel = await import("./barrel.ts");
   const { nested } = await import("./outer.ts");
-  const lib = stored;
-  return [barrel.viaStar, nested.fromNested, lib.fromStored, user.fromValue, user.unused, table[KEY]];
+  return [barrel.viaStar, nested.fromNested, user.fromValue, user.unused, table[KEY]];
 }
 `,
-				"barrel.ts":      `export * from "./leaf.ts";`,
-				"leaf.ts":        "export const viaStar = 1;\nexport const unused = 2;\n",
-				"outer.ts":       `export * as nested from "./nested.ts";`,
-				"nested.ts":      "export const fromNested = 1;\nexport const fromValue = 2;\n",
-				"stored.ts":      `export * from "./stored-leaf.ts";`,
-				"stored-leaf.ts": "export const fromStored = 1;\nexport const notRead = 2;\n",
-				"keys.ts":        "export const KEY = \"a\";\nexport const OTHER = \"b\";\n",
+				"barrel.ts": `export * from "./leaf.ts";`,
+				"leaf.ts":   "export const viaStar = 1;\nexport const unused = 2;\n",
+				"outer.ts":  `export * as nested from "./nested.ts";`,
+				"nested.ts": "export const fromNested = 1;\nexport const fromValue = 2;\n",
+				"keys.ts":   "export const KEY = \"a\";\nexport const OTHER = \"b\";\n",
 			},
 			want: []locatedFinding{
 				{"keys.ts", 2, 14, "Export OTHER is never used"},
 				{"leaf.ts", 2, 14, "Export unused is never used"},
 				{"nested.ts", 2, 14, "Export fromValue is never used"},
-				{"stored-leaf.ts", 2, 14, "Export notRead is never used"},
 			},
 		},
 		{
